@@ -90,6 +90,14 @@ class FakeSpeechSource implements SpeechSource {
 
   static const Duration _wordInterval = Duration(milliseconds: 150);
 
+  /// Which word of each sentence arrives misheard before being corrected.
+  ///
+  /// A real recognizer revises its volatile tail as more audio arrives, and
+  /// that is the arrival pattern most likely to be handled wrongly — a naive
+  /// diff re-animates the whole line, or worse, appends the correction instead
+  /// of replacing it. Growing text alone would never catch either.
+  static const int _revisionWord = 4;
+
   final StreamController<SpeechTranscript> _transcripts =
       StreamController<SpeechTranscript>.broadcast();
   final StreamController<SpeechStatus> _status =
@@ -126,8 +134,7 @@ class FakeSpeechSource implements SpeechSource {
       );
 
   @override
-  Future<SpeechModelStatus> modelStatus() async =>
-      SpeechModelStatus.installed;
+  Future<SpeechModelStatus> modelStatus() async => SpeechModelStatus.installed;
 
   @override
   Future<void> ensureModel() async {}
@@ -155,9 +162,21 @@ class FakeSpeechSource implements SpeechSource {
     _elapsed += _wordInterval;
 
     final isSentenceComplete = _wordIndex >= words.length;
+
+    final visible = words.take(_wordIndex).toList();
+    if (!isSentenceComplete && _wordIndex == _revisionWord) {
+      // Half-heard, as if the word were still being spoken. The next tick
+      // emits it in full, which the receiver has to treat as a correction of
+      // this word rather than as another one.
+      final last = visible.last;
+      if (last.length > 3) {
+        visible[visible.length - 1] = last.substring(0, last.length - 2);
+      }
+    }
+
     _transcripts.add(
       SpeechTranscript(
-        text: words.take(_wordIndex).join(' '),
+        text: visible.join(' '),
         isFinal: isSentenceComplete,
         start: Duration.zero,
         end: _elapsed,

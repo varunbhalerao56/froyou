@@ -29,7 +29,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Froyou uses your microphone to transcribe what you say, entirely on this device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Froyou lets you pick one photo to set the mood and colours of the app. It stays on this device.</string>
+	<string>Froyou lets you pick a few photos to drift quietly behind your home screen. They stay on this device.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Froyou converts your speech to text on this device. Nothing is sent to a server.</string>
 	<key>UIApplicationSceneManifest</key>
@@ -59,6 +59,8 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>UIStatusBarHidden</key>
+	<false/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

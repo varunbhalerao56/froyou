@@ -2,13 +2,16 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:froyou/core/theme/theme.dart';
 import 'package:froyou/features/home/presentation/compose_controller.dart';
+import 'package:froyou/features/home/presentation/transcript_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// The text surface that slides up as the backdrop collapses.
 ///
-/// Same field for both paths: while recording it is read-only and written to
-/// by the transcript stream; once recording stops it becomes editable so the
-/// user can fix what the recognizer heard before saving.
+/// Two surfaces, one box: while recording, [TranscriptView] renders the live
+/// words and fades in each new one; once recording stops it is replaced by the
+/// editable field so the user can fix what the recognizer heard before saving.
+/// Nothing is handed across at that seam — the controller has been writing the
+/// field's value all along — so the swap is purely which widget is mounted.
 class ComposeBox extends StatelessWidget {
   const ComposeBox({required this.compose, super.key});
 
@@ -18,6 +21,15 @@ class ComposeBox extends StatelessWidget {
   /// Letting it grow would change the pane's height and break the invariant
   /// that compose only redistributes space, never adds it.
   static const double _maxFieldHeight = 168;
+
+  /// What `TextField(minLines: 3)` comes out at. Applied to the transcript
+  /// only, never to the field: the field already sizes itself this way, and
+  /// imposing the same number as an outer constraint lands its vertically
+  /// centred text on a different subpixel.
+  static final double _minTranscriptHeight =
+      AppTypography.composeInput.fontSize! *
+      AppTypography.composeInput.height! *
+      3;
 
   @override
   Widget build(BuildContext context) {
@@ -32,44 +44,46 @@ class ComposeBox extends StatelessWidget {
           if (compose.error != null) _ErrorBanner(compose: compose),
           if (compose.downloadFraction != null)
             _DownloadBar(fraction: compose.downloadFraction!),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.textBox.withValues(alpha: 0.86),
-              borderRadius: AppRadius.lgAll,
-              border: Border.all(color: colors.border),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.md,
-                vertical: AppSpacing.sm,
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: _maxFieldHeight),
-                child: TextField(
-                  controller: compose.text,
-                  focusNode: compose.focusNode,
-                  scrollController: compose.textScroll,
-                  // Read-only during recording so the IME doesn't fight the
-                  // programmatic writes coming off the transcript stream.
-                  readOnly: compose.isRecording,
-                  showCursor: !compose.isRecording,
-                  maxLines: null,
-                  minLines: 3,
-                  keyboardType: TextInputType.multiline,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: AppTypography.body.copyWith(color: colors.textPrimary),
-                  cursorColor: colors.primary,
-                  decoration: InputDecoration.collapsed(
-                    hintText: compose.isRecording
-                        ? 'Listening…'
-                        : "What's on your mind?",
-                    hintStyle: AppTypography.body.copyWith(
-                      color: colors.placeholder,
+          // No fill and no border: the field sits directly on the themed
+          // background so writing feels like writing onto the page, not into a
+          // widget. The caret and the text carry the affordance instead.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: _maxFieldHeight),
+            child: compose.isRecording
+                ? TranscriptView(
+                    words: compose.words,
+                    accent: colors.primary,
+                    hintColor: colors.placeholder,
+                    minHeight: _minTranscriptHeight,
+                    style: AppTypography.composeInput.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                  )
+                : TextField(
+                    controller: compose.text,
+                    focusNode: compose.focusNode,
+                    scrollController: compose.textScroll,
+                    // Unconditional: after recording stops the field is not yet
+                    // focused, and the static caret is what says it can now be
+                    // edited. The default — caret only while focused — would
+                    // leave the transcript looking inert.
+                    showCursor: true,
+                    maxLines: null,
+                    minLines: 3,
+                    keyboardType: TextInputType.multiline,
+                    textCapitalization: TextCapitalization.sentences,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.composeInput.copyWith(
+                      color: colors.textPrimary,
+                    ),
+                    cursorColor: colors.primary,
+                    decoration: InputDecoration.collapsed(
+                      hintText: "What's on your mind?",
+                      hintStyle: AppTypography.composeInput.copyWith(
+                        color: colors.placeholder,
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
           ),
         ],
       ),

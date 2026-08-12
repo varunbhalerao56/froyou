@@ -16,7 +16,12 @@ class AppLog {
     debugPrint('[$tag] ⚠️ $message');
   }
 
-  static void error(String tag, String message, [Object? error, StackTrace? stackTrace]) {
+  static void error(
+    String tag,
+    String message, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) {
     debugPrint('[$tag] 🔥 $message');
     if (error != null) debugPrint('[$tag]    error=$error');
     if (stackTrace != null) debugPrint('[$tag]    $stackTrace');

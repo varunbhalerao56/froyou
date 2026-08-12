@@ -17,6 +17,7 @@
 		7BF1A0042F0000000000A001 /* SpeechTranscriptionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF1A0032F0000000000A001 /* SpeechTranscriptionSession.swift */; };
 		7BF1A0062F0000000000A001 /* SpeechChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF1A0052F0000000000A001 /* SpeechChannel.swift */; };
 		7BF1A0082F0000000000A001 /* NlpChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF1A0072F0000000000A001 /* NlpChannel.swift */; };
+		7BF1A00A2F0000000000A001 /* GenAiChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF1A0092F0000000000A001 /* GenAiChannel.swift */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
@@ -66,6 +67,7 @@
 		7BF1A0032F0000000000A001 /* SpeechTranscriptionSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechTranscriptionSession.swift; sourceTree = "<group>"; };
 		7BF1A0052F0000000000A001 /* SpeechChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechChannel.swift; sourceTree = "<group>"; };
 		7BF1A0072F0000000000A001 /* NlpChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NlpChannel.swift; sourceTree = "<group>"; };
+		7BF1A0092F0000000000A001 /* GenAiChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenAiChannel.swift; sourceTree = "<group>"; };
 		80BFF09AA31BE72628DC4805 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
@@ -169,6 +171,7 @@
 				7BF1A0032F0000000000A001 /* SpeechTranscriptionSession.swift */,
 				7BF1A0052F0000000000A001 /* SpeechChannel.swift */,
 				7BF1A0072F0000000000A001 /* NlpChannel.swift */,
+				7BF1A0092F0000000000A001 /* GenAiChannel.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -408,6 +411,7 @@
 				7BF1A0042F0000000000A001 /* SpeechTranscriptionSession.swift in Sources */,
 				7BF1A0062F0000000000A001 /* SpeechChannel.swift in Sources */,
 				7BF1A0082F0000000000A001 /* NlpChannel.swift in Sources */,
+				7BF1A00A2F0000000000A001 /* GenAiChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -499,6 +503,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = CKJL48GV2C;
 				ENABLE_BITCODE = NO;
@@ -509,8 +515,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.froyou;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vtbh.froyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -687,6 +694,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = CKJL48GV2C;
 				ENABLE_BITCODE = NO;
@@ -697,8 +706,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.froyou;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vtbh.froyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
@@ -715,6 +725,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
 				DEVELOPMENT_TEAM = CKJL48GV2C;
 				ENABLE_BITCODE = NO;
@@ -725,8 +737,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.froyou;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vtbh.froyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";

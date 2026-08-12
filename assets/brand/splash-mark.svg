@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Froyou launch mark — the app icon with the room taken away.
+
+  This is app-icon.svg minus its ground and its grain: the same porthole, at the
+  same coordinates, on transparency. Nothing here is re-drawn, and nothing here
+  is allowed to drift — the launch screen only does its job if the mark the
+  system animates away from on the Home screen is the mark the app opens with.
+  If the icon's geometry or its glass stops change, this file changes with it.
+
+  The ground goes because the launch screen supplies its own: a solid colour
+  from the Paper preset's surface, light and dark, so the mark sits on the page
+  the app is about to draw rather than on a second background of its own. That
+  is also why the drop shadow stays. It is the only thing separating a near-
+  white bezel from a near-white page, and on the dark surface it simply costs
+  nothing — a 30% mauve over near-black is not visible either way.
+
+  The 1024 canvas is kept rather than cropped to the capsule. The margin is
+  transparent, so it costs nothing on screen, and holding the coordinate system
+  identical to the icon's is what makes "same geometry" checkable by eye rather
+  than by arithmetic. tool/render_splash.sh sizes the mark on screen.
+
+  Regenerate the PNGs with tool/render_splash.sh — never edit LaunchImage*.png.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Bezel. Lit from the top left, which is also where the drop shadow is
+         absent, so the two agree about where the light is. -->
+    <linearGradient id="bezel" x1="0.16" y1="0.02" x2="0.86" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.38" stop-color="#FAF6FA"/>
+      <stop offset="0.72" stop-color="#EDE5EF"/>
+      <stop offset="1" stop-color="#DFD5E4"/>
+    </linearGradient>
+    <linearGradient id="bezelEdge" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#FFFFFF" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#B9A6C0" stop-opacity="0.35"/>
+    </linearGradient>
+
+    <!-- Behind the glass, where the field dissolves to. Cool at the top and
+         warm at the base. -->
+    <linearGradient id="interior" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0" stop-color="#B995C6"/>
+      <stop offset="0.18" stop-color="#CFA3C8"/>
+      <stop offset="0.55" stop-color="#EBC0D0"/>
+      <stop offset="0.85" stop-color="#F8DAC5"/>
+      <stop offset="1" stop-color="#F3C8AE"/>
+    </linearGradient>
+
+    <!-- Every ramp below is anchored to the glass's 224→800 range in user
+         space, so offsets are directly comparable between them. -->
+    <linearGradient id="field" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.00" stop-color="#8E2A64"/>
+      <stop offset="0.10" stop-color="#B31C6B"/>
+      <stop offset="0.22" stop-color="#DC1C80"/>
+      <stop offset="0.34" stop-color="#F22A91"/>
+      <stop offset="0.46" stop-color="#FF3D9E"/>
+      <stop offset="0.58" stop-color="#F92E92"/>
+      <stop offset="0.70" stop-color="#DC2179"/>
+      <stop offset="0.82" stop-color="#B32463"/>
+      <stop offset="1.00" stop-color="#8E2A55"/>
+    </linearGradient>
+
+    <linearGradient id="petalTone" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.00" stop-color="#FF63B4"/>
+      <stop offset="0.25" stop-color="#FF74C0"/>
+      <stop offset="0.50" stop-color="#FF8ACB"/>
+      <stop offset="0.72" stop-color="#F06AC4"/>
+      <stop offset="1.00" stop-color="#E86FB8"/>
+    </linearGradient>
+
+    <linearGradient id="shadeTone" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.00" stop-color="#4A0E30"/>
+      <stop offset="0.45" stop-color="#5E0B33"/>
+      <stop offset="1.00" stop-color="#3E0E28"/>
+    </linearGradient>
+
+    <!-- The two flower colours in the photo that aren't magenta, each held to
+         the band of the glass it actually occurs in. -->
+    <linearGradient id="violetTone" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.38" stop-color="#B45CF0" stop-opacity="0"/>
+      <stop offset="0.60" stop-color="#B45CF0" stop-opacity="0.85"/>
+      <stop offset="0.82" stop-color="#9B4FD8" stop-opacity="0.35"/>
+      <stop offset="1.00" stop-color="#9B4FD8" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="goldTone" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.50" stop-color="#FFC24A" stop-opacity="0"/>
+      <stop offset="0.72" stop-color="#FFC94F" stop-opacity="0.9"/>
+      <stop offset="0.90" stop-color="#FFB43A" stop-opacity="0.6"/>
+      <stop offset="1.00" stop-color="#FFB43A" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- sRGB, not the linearRGB default: these blurs stand in for Flutter's,
+         and Flutter blurs in sRGB. -->
+    <filter id="depthOfField" x="-25%" y="-25%" width="150%" height="150%"
+            color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <filter id="dissolve" x="-35%" y="-35%" width="170%" height="170%"
+            color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="38"/>
+    </filter>
+    <filter id="soft26" x="-40%" y="-40%" width="180%" height="180%"
+            color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <filter id="castShadow" x="-30%" y="-30%" width="160%" height="160%"
+            color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+    <filter id="contactShadow" x="-25%" y="-25%" width="150%" height="150%"
+            color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+    <filter id="innerShade" x="-30%" y="-30%" width="160%" height="160%"
+            color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="15"/>
+    </filter>
+
+    <!-- Clumps. The alpha row sums the three noise channels and subtracts a
+         threshold, which turns a smooth field into discrete blooms with gaps
+         between them. -->
+    <filter id="clumpNoise" x="0" y="0" width="100%" height="100%"
+            color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016" numOctaves="2" seed="5"/>
+      <feColorMatrix values="0 0 0 0 1
+                             0 0 0 0 1
+                             0 0 0 0 1
+                             1.2 1.2 1.2 0 -1.60"/>
+    </filter>
+    <filter id="clumpNoiseFine" x="0" y="0" width="100%" height="100%"
+            color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.030" numOctaves="2" seed="23"/>
+      <feColorMatrix values="0 0 0 0 1
+                             0 0 0 0 1
+                             0 0 0 0 1
+                             1.6 1.6 1.6 0 -2.35"/>
+    </filter>
+    <filter id="shadeNoise" x="0" y="0" width="100%" height="100%"
+            color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.021" numOctaves="3" seed="41"/>
+      <feColorMatrix values="0 0 0 0 1
+                             0 0 0 0 1
+                             0 0 0 0 1
+                             1.1 1.1 1.1 0 -1.50"/>
+    </filter>
+    <filter id="speckNoise" x="0" y="0" width="100%" height="100%"
+            color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.028" numOctaves="2" seed="61"/>
+      <feColorMatrix values="0 0 0 0 1
+                             0 0 0 0 1
+                             0 0 0 0 1
+                             1.8 1.8 1.8 0 -2.72"/>
+    </filter>
+    <filter id="speckNoiseAlt" x="0" y="0" width="100%" height="100%"
+            color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.024" numOctaves="2" seed="97"/>
+      <feColorMatrix values="0 0 0 0 1
+                             0 0 0 0 1
+                             0 0 0 0 1
+                             1.7 1.7 1.7 0 -2.60"/>
+    </filter>
+
+    <mask id="clumps" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect x="256" y="160" width="512" height="704" filter="url(#clumpNoise)"/>
+    </mask>
+    <mask id="clumpsFine" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect x="256" y="160" width="512" height="704" filter="url(#clumpNoiseFine)"/>
+    </mask>
+    <mask id="shade" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect x="256" y="160" width="512" height="704" filter="url(#shadeNoise)"/>
+    </mask>
+    <mask id="specks" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect x="256" y="160" width="512" height="704" filter="url(#speckNoise)"/>
+    </mask>
+    <mask id="specksAlt" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect x="256" y="160" width="512" height="704" filter="url(#speckNoiseAlt)"/>
+    </mask>
+
+    <!-- White stops with stop-opacity rather than greys: white is 1.0 in every
+         colour space, so the mask value is exactly the alpha written here.
+         These are EdgeGlowImage's real stops — see app-icon.svg. -->
+    <linearGradient id="fadeRamp" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.000" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.121" stop-color="#fff" stop-opacity="0.384"/>
+      <stop offset="0.220" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.740" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.857" stop-color="#fff" stop-opacity="0.384"/>
+      <stop offset="1.000" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="fade" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="url(#fadeRamp)"/>
+    </mask>
+
+    <!-- Where the field is in focus. The blurred copy underneath is drawn
+         unmasked and this one is composited over it, so the two cross-fade to
+         exactly 1.0 everywhere. -->
+    <linearGradient id="focusRamp" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0.00" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.32" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.59" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="1.00" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <mask id="focus" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="url(#focusRamp)"/>
+    </mask>
+
+    <!-- Top-weighted, because that is the edge the bezel occludes under a
+         light coming from above. -->
+    <linearGradient id="occlusion" gradientUnits="userSpaceOnUse" x1="0" y1="224" x2="0" y2="800">
+      <stop offset="0" stop-color="#fff" stop-opacity="1"/>
+      <stop offset="0.45" stop-color="#fff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0.5"/>
+    </linearGradient>
+    <mask id="occlude" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="url(#occlusion)"/>
+    </mask>
+
+    <clipPath id="glass">
+      <rect x="312" y="224" width="400" height="576" rx="200"/>
+    </clipPath>
+
+    <!-- Overdrawn well past the glass on every side. The dissolve blur samples
+         right up to the clip, and a field that stopped at the glass edge would
+         pull in transparency there and leave the sides washed out. -->
+    <g id="flowerField">
+      <rect x="256" y="160" width="512" height="704" fill="url(#field)"/>
+      <rect x="256" y="160" width="512" height="704" fill="url(#shadeTone)"
+            mask="url(#shade)"/>
+      <rect x="256" y="160" width="512" height="704" fill="url(#petalTone)"
+            mask="url(#clumps)"/>
+      <rect x="256" y="160" width="512" height="704" fill="url(#petalTone)"
+            mask="url(#clumpsFine)" opacity="0.55"/>
+      <rect x="256" y="160" width="512" height="704" fill="url(#violetTone)"
+            mask="url(#specksAlt)" opacity="0.7"/>
+      <rect x="256" y="160" width="512" height="704" fill="url(#goldTone)"
+            mask="url(#specks)" opacity="0.6"/>
+    </g>
+  </defs>
+
+  <!-- Bezel shadow: one wide cast plus one tight contact, both offset down and
+       slightly right to agree with the top-left light in the bezel gradient. -->
+  <g fill="#7A5F80">
+    <rect x="252" y="184" width="520" height="696" rx="260"
+          opacity="0.30" filter="url(#castShadow)"/>
+    <rect x="256" y="172" width="520" height="696" rx="260"
+          opacity="0.20" filter="url(#contactShadow)"/>
+  </g>
+
+  <rect x="252" y="164" width="520" height="696" rx="260" fill="url(#bezel)"/>
+
+  <g clip-path="url(#glass)">
+    <rect x="312" y="224" width="400" height="576" fill="url(#interior)"/>
+
+    <g mask="url(#fade)">
+      <use href="#flowerField" filter="url(#dissolve)"/>
+      <g mask="url(#focus)">
+        <use href="#flowerField" filter="url(#depthOfField)"/>
+      </g>
+    </g>
+
+    <!-- Sheen on the glass. -->
+    <ellipse cx="422" cy="336" rx="190" ry="112" fill="#FFFFFF" opacity="0.20"
+             transform="rotate(-26 422 336)" filter="url(#soft26)"/>
+
+    <!-- Inner shadow: a fat stroke straddling the glass edge, with the clip
+         keeping the half that falls inside. -->
+    <g mask="url(#occlude)">
+      <rect x="312" y="224" width="400" height="576" rx="200" fill="none"
+            stroke="#6B4468" stroke-width="46" opacity="0.32"
+            filter="url(#innerShade)"/>
+    </g>
+  </g>
+
+  <!-- Bezel edges last, so nothing is drawn over them: a lit outer rim, and a
+       fine bright line on the glass edge to stop the field bleeding into the
+       frame. -->
+  <rect x="252" y="164" width="520" height="696" rx="260" fill="none"
+        stroke="url(#bezelEdge)" stroke-width="3"/>
+  <rect x="313.25" y="225.25" width="397.5" height="573.5" rx="198.75" fill="none"
+        stroke="#FFFFFF" stroke-width="2.5" opacity="0.5"/>
+</svg>

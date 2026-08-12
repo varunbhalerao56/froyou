@@ -23,8 +23,11 @@ class EdgeGlowImage extends StatelessWidget {
     this.imageHeight = 420,
     this.topGlowExtent = 50,
     this.bottomGlowExtent = 250,
-    this.topBlurFadeEnd = 0.15,
-    this.bottomBlurFadeStart = 0.7,
+    // Roughly a fifth of the image at each end. Shorter than this and the
+    // dissolve reads as an edge you can point at rather than as the photo
+    // emerging from the page.
+    this.topBlurFadeEnd = 0.22,
+    this.bottomBlurFadeStart = 0.74,
     this.blurSigma = 40.0,
     super.key,
   });
@@ -59,7 +62,17 @@ class EdgeGlowImage extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Top glow — holds steady near the image instead of fading to 0 right at the seam
+          // Top glow — solid where the image has faded to nothing, gone by the
+          // time the image is fully opaque, so the two cross over smoothly.
+          //
+          // This used to run the other way, and it was right when it was
+          // written: [topColor] was sampled from the image's own top edge, so
+          // holding it solid *near the seam* extended the picture upward and
+          // fading it out at the very top blended into the page. Once the glow
+          // became the page's own background colour, that same gradient started
+          // painting an opaque band of background over a fully opaque image and
+          // then stopping dead at the strip's edge — a hard line across the top
+          // of every photo.
           Positioned(
             top: 0,
             left: 0,
@@ -69,14 +82,10 @@ class EdgeGlowImage extends StatelessWidget {
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      topColor,
-                      topColor,
-                      topColor.withValues(alpha: 0),
-                    ],
-                    stops: const [0.0, 0.6, 1.0],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [topColor, topColor, topColor.withValues(alpha: 0)],
+                    stops: const [0.0, 0.35, 1.0],
                   ),
                 ),
               ),
@@ -118,23 +127,26 @@ class EdgeGlowImage extends StatelessWidget {
               borderRadius: borderRadius,
               child: ShaderMask(
                 shaderCallback: (rect) {
+                  // The mid stop sits a little past halfway and holds back the
+                  // opacity, so the image eases in rather than arriving at
+                  // most of full strength in the first few pixels.
                   return LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: const [
                       Colors.transparent,
-                      Colors.white70,
+                      Colors.white38,
                       Colors.white,
                       Colors.white,
-                      Colors.white70,
+                      Colors.white38,
                       Colors.transparent,
                     ],
                     stops: [
                       0.0,
-                      topBlurFadeEnd * 0.5,
+                      topBlurFadeEnd * 0.55,
                       topBlurFadeEnd,
                       bottomBlurFadeStart,
-                      bottomBlurFadeStart + 0.15,
+                      bottomBlurFadeStart + (1 - bottomBlurFadeStart) * 0.55,
                       1.0,
                     ],
                   ).createShader(rect);

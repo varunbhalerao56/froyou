@@ -102,8 +102,8 @@ void main() {
     });
   });
 
-  group('relabelClusters', () {
-    test('names a cluster from words shared across its members', () async {
+  group('relabelAllClusters', () {
+    test('names a cluster from the words its members share', () async {
       await addEntry('Work has been heavy again.', embedding: vector(0));
       await addEntry(
         'Work followed me home tonight.',
@@ -111,12 +111,59 @@ void main() {
       );
 
       final cluster = db.getAllThemeClusters().single;
-      db.relabelClusters({cluster.id});
+      db.relabelAllClusters();
 
       final label = db.getThemeCluster(cluster.id)!.label;
       expect(label, isNotNull);
       expect(label, isNotEmpty);
       expect(label, contains('work'));
+    });
+
+    test('rescores every cluster, not just the one that changed', () async {
+      // Two clusters that both mention work. Once the second exists, "work"
+      // stops distinguishing either of them, and the first cluster's label has
+      // to move off it — which only happens if labelling is global.
+      await addEntry('Work and the deadline crushed me.', embedding: vector(0));
+      await addEntry(
+        'The deadline at work moved again.',
+        embedding: vector(0, jitter: 0.02, seed: 5),
+      );
+      db.relabelAllClusters();
+
+      await addEntry('Work ruined my sleep.', embedding: vector(1));
+      await addEntry(
+        'Sleep was broken before work.',
+        embedding: vector(1, jitter: 0.02, seed: 6),
+      );
+      db.relabelAllClusters();
+
+      final labels = db
+          .getAllThemeClusters()
+          .map((cluster) => cluster.label)
+          .toList();
+
+      expect(labels, hasLength(2));
+      expect(labels, everyElement(isNot(contains('work'))));
+      expect(labels.any((label) => label!.contains('deadline')), isTrue);
+      expect(labels.any((label) => label!.contains('sleep')), isTrue);
+    });
+  });
+
+  group('clearAll', () {
+    test('removes every entry, sentence and cluster', () async {
+      await addEntry('work one', embedding: vector(0));
+      await addEntry('work two', embedding: vector(0, jitter: 0.02, seed: 7));
+      await addEntry('unclustered');
+
+      expect(db.countEntries(), 3);
+      expect(db.getAllThemeClusters(), isNotEmpty);
+
+      db.clearAll();
+
+      expect(db.countEntries(), 0);
+      expect(db.getAllEntries(), isEmpty);
+      expect(db.getAllThemeClusters(), isEmpty);
+      expect(db.sentencesSince(DateTime(2000)), isEmpty);
     });
   });
 

@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:froyou/app/app_scope.dart';
 import 'package:froyou/core/theme/theme.dart';
+import 'package:froyou/core/ui/living_backdrop.dart';
 import 'package:froyou/core/ui/noise_overlay.dart';
+import 'package:froyou/features/home/presentation/backdrop_carousel.dart';
 import 'package:froyou/features/home/presentation/compose_controller.dart';
 import 'package:froyou/features/home/presentation/home_pane.dart';
 import 'package:froyou/features/journal/presentation/log_card.dart';
@@ -44,6 +46,13 @@ class HomeShell extends HookWidget {
     useEffect(() => compose.dispose, [compose]);
     useListenable(compose);
 
+    // Paused while composing: nothing should be drifting or crossfading behind
+    // a text field.
+    final rotation = useBackdropRotation(
+      count: profile.backdrops.length,
+      paused: compose.isOpen,
+    );
+
     // Opening compose must start from the top: the pane's height changes with
     // the keyboard, and being mid-scroll while that happens is what would
     // otherwise produce a jump.
@@ -55,6 +64,17 @@ class HomeShell extends HookWidget {
         curve: Curves.easeOutCubic,
       );
     };
+
+    // The last step of onboarding explains what the microphone will ask for
+    // and then hands straight over. Post-frame so the permission dialog lands
+    // on a built Home rather than over the tail of the onboarding transition,
+    // and once only — a rebuild must not reopen the recorder over someone who
+    // has already started typing.
+    useEffect(() {
+      if (!profile.consumeGuidedLogRequest()) return null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => compose.openVoice());
+      return null;
+    }, const []);
 
     // Read inside the scroll listener rather than captured, so the listener is
     // attached exactly once and still sees the current pane height.
@@ -94,25 +114,14 @@ class HomeShell extends HookWidget {
           // Mandatory. Scaffold would otherwise shrink the body for the
           // keyboard *as well*, and the double shrink reads as a bug.
           resizeToAvoidBottomInset: false,
-          backgroundColor: palette.bottomEdge,
+          backgroundColor: palette.colors.background,
           body: Stack(
             children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        palette.bottomEdge,
-                        palette.bottomEdge,
-                        palette.bottomEdge,
-                      ],
-                      stops: const [0.0, 0.1, 1.0],
-                    ),
-                  ),
-                ),
-              ),
+              // The surface the photos dissolve into, and the one thing on this
+              // screen that is always moving. Under the noise overlay on
+              // purpose — a huge low-contrast gradient is exactly where banding
+              // shows, and the noise is already there to break it up.
+              Positioned.fill(child: LivingBackdrop(palette: palette)),
               // Spans the whole shell, not just the image: the background is a
               // huge, low-contrast gradient and is where banding actually shows.
               const Positioned.fill(
@@ -133,17 +142,19 @@ class HomeShell extends HookWidget {
                       height: paneHeight,
                       compose: compose,
                       palette: palette,
-                      quote: profile.profile.quote ?? '',
-                      backdrop: profile.backdrop,
+                      backdrops: profile.backdrops,
+                      providerFor: profile.providerFor,
+                      rotation: rotation,
+                      prompt: journal.prompt,
                       chromeOpacity: chromeOpacity,
+                      layout: profile.homeLayout,
                     ),
                   ),
                   SliverPersistentHeader(
                     pinned: true,
                     delegate: LogsBarDelegate(
-                      background: palette.bottomEdge,
+                      background: palette.colors.background,
                       foreground: palette.colors.textPrimary,
-                      border: palette.colors.border,
                       count: journal.count,
                       topPadding: MediaQuery.paddingOf(context).top,
                       onCompose: compose.openText,

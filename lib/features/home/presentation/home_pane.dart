@@ -5,53 +5,81 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:froyou/core/theme/theme.dart';
-import 'package:froyou/core/ui/color_utils.dart';
-import 'package:froyou/core/ui/edge_glow_image.dart';
+import 'package:froyou/features/home/presentation/backdrop_carousel.dart';
 import 'package:froyou/features/home/presentation/compose_box.dart';
 import 'package:froyou/features/home/presentation/compose_controller.dart';
+import 'package:froyou/features/home/presentation/home_layout.dart';
+import 'package:froyou/features/profile/data/backdrop.dart';
 
-/// The Home screen itself: backdrop, quote, and the controls that open compose.
+/// The Home screen itself: caption, backdrop, prompt, and the controls that
+/// open compose.
 ///
 /// **Invariant: this pane is always exactly [height] tall.** Opening compose
-/// only redistributes space *inside* it — the backdrop gives up exactly the
-/// height the compose box takes. Nothing outside the pane relayouts, the
-/// scroll extent never changes mid-animation, and so the transition into the
-/// logs list below has no seam and the list never jumps.
+/// only redistributes space *inside* it. Nothing outside the pane relayouts,
+/// the scroll extent never changes mid-animation, and so the transition into
+/// the logs list below has no seam and the list never jumps.
+///
+/// Reading order is caption → image → prompt: the words you chose sit above
+/// the picture, and the question sits directly above the controls that answer
+/// it.
 class HomePane extends StatelessWidget {
   const HomePane({
     required this.height,
     required this.compose,
     required this.palette,
-    required this.quote,
+    required this.backdrops,
+    required this.providerFor,
+    required this.rotation,
+    required this.prompt,
     required this.chromeOpacity,
-    this.backdrop,
+    this.layout = HomeLayout.fullBleed,
     super.key,
   });
 
   final double height;
   final ComposeController compose;
   final AppPalette palette;
-  final String quote;
-  final ImageProvider? backdrop;
+  final List<Backdrop> backdrops;
+  final ImageProvider Function(Backdrop) providerFor;
+  final BackdropRotation rotation;
 
-  /// Fades the quote and controls as the shell scrolls toward the logs list.
-  /// Scoped to just those two small widgets — driving the whole pane off the
-  /// scroll position would re-composite the blur shader every frame.
+  /// What sits under the image — the default "How are you feeling?", or a
+  /// follow-up question when there's one pending.
+  final String prompt;
+
+  /// Fades the chrome as the shell scrolls toward the logs list. Scoped to the
+  /// small widgets only — driving the whole pane off the scroll position would
+  /// re-composite the blur shader every frame.
   final ValueListenable<double> chromeOpacity;
 
-  /// Glow above the image, matching the background gradient's start color.
-  static const double _topGlow = 50;
+  /// How the chrome is arranged. Defaulted to what ships, so a call site that
+  /// doesn't care gets the same thing the app does.
+  final HomeLayout layout;
 
-  /// Space the compose box and controls need once open.
-  static const double _composeReserve = 300;
+  static const double _captionHeight = 76;
+
+  /// Two lines of [AppTypography.prompt] with a little air. A generated
+  /// follow-up runs longer than "How are you feeling?" and wraps, and the box
+  /// has to hold it without clipping.
+  static const double _promptHeight = 68;
+
+  /// Room the controls row needs at the bottom of the pane.
+  static const double _controlsHeight = 96;
+
+  /// [HomeLayout.typeFirst] gives the prompt the top of the screen, so it is
+  /// set larger and needs more room than it does under the image.
+  static const double _leadPromptHeight = 92;
+
+  /// The strip of image [HomeLayout.typeFirst] keeps at the bottom.
+  static const double _stripHeight = 140;
 
   @override
   Widget build(BuildContext context) {
-    final available = math.max(0.0, height - _topGlow);
-    final expandedImage = available * 0.62;
-    final collapsedImage = math
-        .max(140.0, available - _composeReserve)
-        .clamp(0.0, expandedImage);
+    // The shell deliberately isn't inside a SafeArea — the surface has to run
+    // edge to edge behind the status bar. So the pane insets its own content
+    // instead; without this the caption and the compose field slide under the
+    // clock and the dynamic island.
+    final topInset = MediaQuery.paddingOf(context).top;
 
     return SizedBox(
       height: height,
@@ -59,91 +87,439 @@ class HomePane extends StatelessWidget {
         animation: compose.expandCurve,
         builder: (context, _) {
           final t = compose.expandCurve.value;
-          final imageHeight = lerpDouble(expandedImage, collapsedImage, t)!;
-          // Fully gone by the halfway point, so the quote is never competing
-          // with the compose box for the same space.
-          final quoteOpacity =
-              1 - Curves.easeOut.transform((t * 2).clamp(0.0, 1.0));
 
-          return Column(
+          // Everything above the compose field gives up *all* of its height,
+          // not just some: the ask was for the text to have room to breathe,
+          // and a half-collapsed photo still competes with it.
+          final available = math.max(0.0, height - _controlsHeight - topInset);
+
+          // The one number every variant is held to. Whatever a layout puts
+          // inside it, the chrome occupies exactly this much — so the pane
+          // cannot change total height and the invariant holds by
+          // construction rather than by each variant getting the sum right.
+          final chromeHeight = lerpDouble(available, 0, t)!;
+
+          // Chrome is gone well before the compose box arrives at 0.35, so the
+          // two never overlap in the same space.
+          final chromeOut = (1 - t * 1.6).clamp(0.0, 1.0);
+
+          final column = Column(
             children: [
-              RepaintBoundary(
-                child: EdgeGlowImage(
-                  image: backdrop,
-                  topColor: palette.topEdge,
-                  bottomColor: palette.bottomEdge,
-                  imageHeight: imageHeight,
-                  topGlowExtent: _topGlow,
-                  bottomGlowExtent: 0,
-                  // Cheaper mid-flight: the two-pass Gaussian is the one real
-                  // cost in this animation, and fewer taps per pixel is the
-                  // most direct lever on it.
-                  blurSigma: lerpDouble(40, 22, t)!,
-                ),
+              SizedBox(height: topInset),
+              ..._chrome(
+                t: t,
+                chromeHeight: chromeHeight,
+                chromeOut: chromeOut,
               ),
               Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (quoteOpacity > 0.01)
-                      _Quote(
-                        quote: quote,
-                        palette: palette,
-                        opacity: quoteOpacity,
-                        chromeOpacity: chromeOpacity,
-                      ),
-                    if (t > 0.01)
-                      FadeTransition(
-                        opacity: compose.boxReveal,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0, 0.15),
-                            end: Offset.zero,
-                          ).animate(compose.boxReveal),
-                          child: Center(child: ComposeBox(compose: compose)),
+                child: t <= 0.01
+                    ? const SizedBox.expand()
+                    // The chrome above vacates over the same 320ms that this
+                    // arrives, so for the first few frames there is less room
+                    // here than the field needs. OverflowBox lets it lay out at
+                    // its natural height regardless and ClipRect hides the
+                    // excess — without them the transition spends its opening
+                    // frames as a RenderFlex overflow.
+                    : ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.center,
+                          minHeight: 0,
+                          // Finite rather than infinite: an unbounded height
+                          // leaves the child's centre undefined, which parks it
+                          // at the top instead of the middle. This is simply
+                          // more than the field can ever need.
+                          maxHeight: 640,
+                          child: FadeTransition(
+                            opacity: compose.boxReveal,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0, 0.12),
+                                end: Offset.zero,
+                              ).animate(compose.boxReveal),
+                              child: ComposeBox(compose: compose),
+                            ),
+                          ),
                         ),
                       ),
-                  ],
-                ),
               ),
               _Controls(compose: compose, chromeOpacity: chromeOpacity),
+            ],
+          );
+
+          if (layout != HomeLayout.fullBleed) return column;
+
+          // The only variant that needs a layer behind the whole pane. Note
+          // the image is drawn at the *full* pane height here, so the two-pass
+          // Gaussian is doing meaningfully more work than in the other
+          // variants — which is exactly the sort of thing the live gallery
+          // exists to let you feel on a device.
+          //
+          // The photo layer empties out; the [Stack] around it does not go
+          // away, and the three children keep their count and their order
+          // whatever happens. That is load-bearing. Returning the bare column
+          // once the chrome has finished collapsing swaps the pane's root
+          // widget mid-open, which re-parents everything beneath it — and
+          // everything includes the compose field. Its [EditableText] gets
+          // disposed and rebuilt, the platform input connection goes with it,
+          // and the keyboard slides back down about 280ms in, just as it
+          // finishes arriving. Holding the slots fixed keeps the column's
+          // element, and the field's, alive across the whole animation.
+          final hasChrome = chromeHeight > 1;
+
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: hasChrome
+                    ? Opacity(
+                        opacity: chromeOut,
+                        child: RepaintBoundary(
+                          child: BackdropCarousel(
+                            backdrops: backdrops,
+                            providerFor: providerFor,
+                            rotation: rotation,
+                            glowColor: palette.glow,
+                            imageHeight: height,
+                            blurSigma: lerpDouble(40, 22, t)!,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              Positioned.fill(
+                child: hasChrome
+                    ? IgnorePointer(
+                        child: Opacity(
+                          opacity: chromeOut,
+                          // Both ends: the caption sits at the very top of the
+                          // photo here, and the bottom runs straight into the
+                          // opaque logs bar with nothing between them.
+                          child: _Scrim(
+                            palette: palette,
+                            topAlpha: 0.82,
+                            bottomAlpha: 1,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              column,
             ],
           );
         },
       ),
     );
   }
+
+  /// The chrome, as children spliced straight into the pane's column.
+  ///
+  /// A list rather than one widget so [HomeLayout.classic] can keep emitting
+  /// the three separately-sized boxes it always has — the goldens pin that
+  /// arrangement to the pixel, and nesting it a level deeper to be tidy would
+  /// be paying for symmetry with the one thing that must not move.
+  List<Widget> _chrome({
+    required double t,
+    required double chromeHeight,
+    required double chromeOut,
+  }) {
+    if (chromeOut <= 0.01) return [SizedBox(height: chromeHeight)];
+
+    final captionHeight = lerpDouble(_captionHeight, 0, t)!;
+    final promptHeight = lerpDouble(_promptHeight, 0, t)!;
+
+    Widget caption() => _Caption(
+      backdrops: backdrops,
+      rotation: rotation,
+      palette: palette,
+      chromeOpacity: chromeOpacity,
+    );
+
+    Widget promptLine([TextStyle? style]) => _Prompt(
+      prompt: prompt,
+      palette: palette,
+      chromeOpacity: chromeOpacity,
+      style: style,
+    );
+
+    Widget carousel(double imageHeight) => RepaintBoundary(
+      child: BackdropCarousel(
+        backdrops: backdrops,
+        providerFor: providerFor,
+        rotation: rotation,
+        glowColor: palette.glow,
+        imageHeight: imageHeight,
+        // Cheaper mid-flight: the two-pass Gaussian is the one real cost
+        // here, and fewer taps per pixel is the most direct lever on it.
+        blurSigma: lerpDouble(40, 22, t)!,
+      ),
+    );
+
+    switch (layout) {
+      case HomeLayout.classic:
+        final imageHeight = math.max(
+          0.0,
+          chromeHeight - captionHeight - promptHeight,
+        );
+        return [
+          SizedBox(
+            height: captionHeight,
+            child: Opacity(opacity: chromeOut, child: caption()),
+          ),
+          if (imageHeight > 1)
+            Opacity(opacity: chromeOut, child: carousel(imageHeight)),
+          SizedBox(
+            height: promptHeight,
+            child: Opacity(opacity: chromeOut, child: promptLine()),
+          ),
+        ];
+
+      case HomeLayout.captionOverImage:
+        return [
+          SizedBox(
+            height: chromeHeight,
+            child: Opacity(
+              opacity: chromeOut,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  carousel(chromeHeight),
+                  Positioned.fill(
+                    child: IgnorePointer(child: _Scrim(palette: palette)),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: captionHeight, child: caption()),
+                        SizedBox(height: promptHeight, child: promptLine()),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ];
+
+      case HomeLayout.fullBleed:
+        // The image is a layer behind the whole pane, so the chrome box holds
+        // only the words: the caption at the top and the question down by the
+        // controls that answer it, each over its own end of the scrim.
+        return [
+          SizedBox(
+            height: chromeHeight,
+            child: Opacity(
+              opacity: chromeOut,
+              child: Column(
+                children: [
+                  SizedBox(height: captionHeight, child: caption()),
+                  const Spacer(),
+                  SizedBox(height: promptHeight, child: promptLine()),
+                ],
+              ),
+            ),
+          ),
+        ];
+
+      case HomeLayout.centred:
+        return [
+          SizedBox(
+            height: chromeHeight,
+            child: Opacity(
+              opacity: chromeOut,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(height: captionHeight, child: caption()),
+                  SizedBox(height: promptHeight, child: promptLine()),
+                ],
+              ),
+            ),
+          ),
+        ];
+
+      case HomeLayout.typeFirst:
+        final leadHeight = lerpDouble(_leadPromptHeight, 0, t)!;
+        final stripHeight = math.min(
+          lerpDouble(_stripHeight, 0, t)!,
+          math.max(0.0, chromeHeight - leadHeight),
+        );
+        return [
+          SizedBox(
+            height: chromeHeight,
+            child: Opacity(
+              opacity: chromeOut,
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: leadHeight,
+                    // The hero style, because here the question *is* the top of
+                    // the screen. Anything smaller would now be below the size
+                    // the prompt already runs at in every other layout.
+                    child: promptLine(AppTypography.quote),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: compose.openText,
+                      behavior: HitTestBehavior.opaque,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg,
+                          ),
+                          child: Text(
+                            "What's on your mind?",
+                            textAlign: TextAlign.center,
+                            style: AppTypography.composeInput.copyWith(
+                              color: palette.colors.placeholder,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (stripHeight > 1) carousel(stripHeight),
+                ],
+              ),
+            ),
+          ),
+        ];
+    }
+  }
 }
 
-class _Quote extends StatelessWidget {
-  const _Quote({
-    required this.quote,
+/// Fades an image into the theme so words can sit on it.
+///
+/// Its own widget rather than an inline gradient because two variants overlay
+/// text on the backdrop and they must dissolve into the same colour.
+class _Scrim extends StatelessWidget {
+  const _Scrim({
     required this.palette,
-    required this.opacity,
+    this.topAlpha = 0,
+    this.bottomAlpha = 0.88,
+  });
+
+  final AppPalette palette;
+
+  /// Legibility for a caption sitting at the very top of the image.
+  final double topAlpha;
+
+  /// How completely the image is gone by the bottom edge. [HomeLayout.fullBleed]
+  /// takes this to 1: the pane ends against the opaque logs bar, so anything
+  /// short of the full background colour leaves a hard line across the seam.
+  final double bottomAlpha;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = palette.colors.background;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            background.withValues(alpha: topAlpha),
+            background.withValues(alpha: 0),
+            background.withValues(alpha: 0),
+            background.withValues(alpha: bottomAlpha),
+          ],
+          stops: const [0.0, 0.3, 0.5, 1.0],
+        ),
+      ),
+    );
+  }
+}
+
+/// The caption for the image currently showing, crossfading with it.
+class _Caption extends StatelessWidget {
+  const _Caption({
+    required this.backdrops,
+    required this.rotation,
+    required this.palette,
     required this.chromeOpacity,
   });
 
-  final String quote;
+  final List<Backdrop> backdrops;
+  final BackdropRotation rotation;
   final AppPalette palette;
-  final double opacity;
   final ValueListenable<double> chromeOpacity;
+
+  @override
+  Widget build(BuildContext context) {
+    final caption = backdrops.isEmpty
+        ? null
+        : backdrops[rotation.index.clamp(0, backdrops.length - 1)].caption;
+
+    return ValueListenableBuilder<double>(
+      valueListenable: chromeOpacity,
+      builder: (context, opacity, child) =>
+          Opacity(opacity: opacity, child: child),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Center(
+          child: AnimatedSwitcher(
+            // Matched to the image crossfade so the words and the picture
+            // change as one thing.
+            duration: const Duration(milliseconds: 1200),
+            child: (caption == null || caption.trim().isEmpty)
+                ? const SizedBox.shrink()
+                : Text(
+                    caption,
+                    key: ValueKey(caption),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.quote.copyWith(
+                      color: palette.colors.textPrimary,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The line under the image. Not a button — the mic and keyboard below it are
+/// how you answer.
+class _Prompt extends StatelessWidget {
+  const _Prompt({
+    required this.prompt,
+    required this.palette,
+    required this.chromeOpacity,
+    this.style,
+  });
+
+  final String prompt;
+  final AppPalette palette;
+  final ValueListenable<double> chromeOpacity;
+
+  /// Overridden only by [HomeLayout.typeFirst], where the prompt leads the
+  /// screen instead of sitting under the picture.
+  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<double>(
       valueListenable: chromeOpacity,
-      builder: (context, scrollOpacity, child) =>
-          Opacity(opacity: opacity * scrollOpacity, child: child),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-          child: Text(
-            quote,
-            textAlign: TextAlign.center,
-            style: AppTypography.quote.copyWith(
-              // Derived from the background it sits on rather than taken from
-              // the palette, so it stays legible over the image's own colors.
-              color: ensureContrast(palette.bottomEdge),
+      builder: (context, opacity, child) =>
+          Opacity(opacity: opacity, child: child),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: AppDurations.slow,
+            child: Text(
+              prompt,
+              key: ValueKey(prompt),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: (style ?? AppTypography.prompt).copyWith(
+                color: palette.colors.textSecondary,
+              ),
             ),
           ),
         ),
@@ -169,7 +545,10 @@ class _Controls extends StatelessWidget {
         child: IgnorePointer(ignoring: opacity < 0.05, child: child),
       ),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.lg, top: AppSpacing.sm),
+        padding: const EdgeInsets.only(
+          bottom: AppSpacing.lg,
+          top: AppSpacing.sm,
+        ),
         child: AnimatedSwitcher(
           duration: AppDurations.fast,
           child: compose.isOpen
@@ -233,7 +612,12 @@ class _OpenControls extends StatelessWidget {
           child: const Text('Cancel'),
         ),
         if (compose.isRecording)
-          _StopRecordingButton(compose: compose, colors: colors)
+          FilledButton.icon(
+            onPressed: compose.stopVoice,
+            style: FilledButton.styleFrom(backgroundColor: colors.error),
+            icon: const Icon(CupertinoIcons.stop_fill, size: 16),
+            label: const Text('Stop'),
+          )
         else
           FilledButton(
             onPressed: compose.canSave ? compose.save : null,
@@ -246,23 +630,6 @@ class _OpenControls extends StatelessWidget {
                 : const Text('Save'),
           ),
       ],
-    );
-  }
-}
-
-class _StopRecordingButton extends StatelessWidget {
-  const _StopRecordingButton({required this.compose, required this.colors});
-
-  final ComposeController compose;
-  final AppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton.icon(
-      onPressed: compose.stopVoice,
-      style: FilledButton.styleFrom(backgroundColor: colors.error),
-      icon: const Icon(CupertinoIcons.stop_fill, size: 16),
-      label: const Text('Stop'),
     );
   }
 }

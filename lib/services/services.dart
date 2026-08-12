@@ -5,6 +5,7 @@
 /// ```
 library;
 
+export 'genai_service.dart';
 export 'nlp_service.dart';
 export 'speech_service.dart';
 export 'db_service.dart';

@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Golden-test diff output. Written next to the test on failure, and stale the
+# moment the golden is regenerated.
+test/**/failures/

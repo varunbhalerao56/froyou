@@ -65,7 +65,11 @@ class BackdropPicker extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 if (image != null)
-                  Image(image: image!, fit: BoxFit.cover, gaplessPlayback: true),
+                  Image(
+                    image: image!,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  ),
                 if (image == null)
                   Center(
                     child: Column(

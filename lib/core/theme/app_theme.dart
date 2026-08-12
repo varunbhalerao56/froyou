@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'theme.dart';
 
@@ -24,6 +25,33 @@ class AppTheme {
   /// recolors everything with a transition, for free.
   static ThemeData fromPalette(AppPalette palette) =>
       _build(palette.colors, palette.brightness);
+
+  /// How the platform should draw the status bar over a theme of this
+  /// brightness.
+  ///
+  /// [SystemUiOverlayStyle.statusBarBrightness] describes what sits *behind*
+  /// the status bar rather than the icons themselves — iOS picks contrasting
+  /// icons from it — so it takes the app's brightness directly, and the icon
+  /// brightness (which is Android's control) is the inverse.
+  ///
+  /// This only matters when the app's brightness disagrees with the system's,
+  /// which is exactly what pinning Light or Dark in Settings does. Without it
+  /// iOS keeps drawing the icons for the *system* appearance, and a light
+  /// theme under a dark system leaves the clock white on paper.
+  ///
+  /// Applied in two places, because `RenderView` samples the layer tree at the
+  /// status bar and the topmost annotation wins: on [AppBarTheme] below, and
+  /// as an `AnnotatedRegion` above `MaterialApp` for Home and onboarding,
+  /// which have no app bar at all.
+  static SystemUiOverlayStyle overlayStyleFor(Brightness brightness) {
+    return SystemUiOverlayStyle(
+      statusBarColor: const Color(0x00000000),
+      statusBarBrightness: brightness,
+      statusBarIconBrightness: brightness == Brightness.dark
+          ? Brightness.light
+          : Brightness.dark,
+    );
+  }
 
   static CupertinoThemeData cupertinoLight() =>
       _cupertino(AppColors.light, Brightness.light);
@@ -64,6 +92,10 @@ class AppTheme {
         elevation: AppElevation.level0,
         centerTitle: false,
         surfaceTintColor: palette.background,
+        // An app bar annotates the status bar region itself, so it would
+        // otherwise override the app-level style with Material's default for
+        // its own brightness.
+        systemOverlayStyle: overlayStyleFor(brightness),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

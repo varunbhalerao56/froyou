@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:froyou/core/theme/theme.dart';
 import 'package:froyou/features/analytics/presentation/analytics_view.dart';
+import 'package:froyou/features/journal/presentation/search_view.dart';
 import 'package:froyou/features/profile/presentation/settings_view.dart';
 
 /// The bar that divides Home from the logs list.
@@ -15,7 +16,6 @@ class LogsBarDelegate extends SliverPersistentHeaderDelegate {
   const LogsBarDelegate({
     required this.background,
     required this.foreground,
-    required this.border,
     required this.count,
     required this.topPadding,
     required this.onCompose,
@@ -23,7 +23,6 @@ class LogsBarDelegate extends SliverPersistentHeaderDelegate {
 
   final Color background;
   final Color foreground;
-  final Color border;
   final int count;
 
   /// Status-bar inset. Folded into the extent so that, once pinned, the bar's
@@ -41,17 +40,37 @@ class LogsBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => _barHeight + topPadding;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    // Deliberately one flat blur and one flat wash, both edge to edge.
+    //
+    // A soft top edge was tried twice, to dissolve the line this cuts across
+    // the photo behind it, and it can't be had: a `BackdropFilter` is clipped
+    // to a rectangle, so feathering it means several of them, and several of
+    // them is a render-pass break each on a header that is pinned throughout
+    // a scroll. Ramping only the wash is cheap but reaches the same dead end
+    // from the other side — this delegate cannot tell whether it is halfway
+    // down the photo or pinned over the status bar, because `overlapsContent`
+    // is `constraints.overlap > 0` (an earlier sliver obstructing it, which
+    // nothing here does) and `shrinkOffset` is clamped to
+    // `maxExtent - minExtent`, which is zero. So a top edge soft enough to
+    // dissolve into the photo is also soft enough to let a log card show
+    // through beside the clock.
+    //
+    // The line it was chasing came from the backdrop's Ken Burns zoom
+    // dragging live photo past the point the dissolve had finished — fixed at
+    // the source, in `EdgeGlowImage`'s drift margins.
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        // No dividing rule: the whole point of the shell is that Home and the
+        // logs are one continuous surface, and a hairline across it reads as
+        // a seam.
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: background.withValues(alpha: 0.92),
-            border: Border(
-              bottom: BorderSide(color: border.withValues(alpha: 0.5)),
-            ),
-          ),
+          decoration: BoxDecoration(color: background.withValues(alpha: 0.82)),
           child: Padding(
             padding: EdgeInsets.only(
               top: topPadding,
@@ -71,6 +90,19 @@ class LogsBarDelegate extends SliverPersistentHeaderDelegate {
                     tooltip: 'New log',
                     onPressed: onCompose,
                     icon: Icon(CupertinoIcons.add, color: foreground, size: 22),
+                  ),
+                  IconButton(
+                    tooltip: 'Search',
+                    onPressed: () => Navigator.of(context).push(
+                      CupertinoPageRoute<void>(
+                        builder: (_) => const SearchView(),
+                      ),
+                    ),
+                    icon: Icon(
+                      CupertinoIcons.search,
+                      color: foreground,
+                      size: 22,
+                    ),
                   ),
                   IconButton(
                     tooltip: 'Analytics',
@@ -114,7 +146,6 @@ class LogsBarDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(LogsBarDelegate oldDelegate) {
     return oldDelegate.background != background ||
         oldDelegate.foreground != foreground ||
-        oldDelegate.border != border ||
         oldDelegate.count != count ||
         oldDelegate.topPadding != topPadding ||
         oldDelegate.onCompose != onCompose;

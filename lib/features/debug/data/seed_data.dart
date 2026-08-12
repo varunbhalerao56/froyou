@@ -1,7 +1,9 @@
 import 'dart:math';
 
+import 'package:froyou/core/config/label_mode.dart';
 import 'package:froyou/core/logging/app_log.dart';
 import 'package:froyou/features/journal/journal.dart';
+import 'package:froyou/services/services.dart';
 
 /// Fills the database with believable logs and working clusters.
 ///
@@ -45,7 +47,17 @@ class DebugSeed {
   static Future<int> run(JournalEntryDb db) async {
     final random = Random(11);
     var created = 0;
-    final touchedClusters = <int>{};
+
+    // Said out loud before anything else, because it decides what the rest of
+    // this log means: with the model absent and [kModelOnlyLabels] on, every
+    // line below is expected to come back empty.
+    final availability = await GenAiService.availability();
+    AppLog.info(
+      'DebugSeed',
+      'model available=${availability.isAvailable}'
+          '${availability.isAvailable ? '' : ' (${availability.reason?.name})'} · '
+          'fallbacks ${kModelOnlyLabels ? 'OFF — blank means the model said nothing' : 'on'}',
+    );
 
     for (var topic = 0; topic < _topics.length; topic++) {
       final direction = _direction(topic);
@@ -61,27 +73,66 @@ class DebugSeed {
 
         final entry = JournalEntry()
           ..rawText = text
-          ..keywords = ClusterLabeler.keywordsFor(text)
           ..moodScore = _moodFor(topic)
           ..createdAt = createdAt;
         entry.id = await db.putEntry(entry);
 
-        final sentence = JournalSentence()
-          ..text = text
-          ..keywords = ClusterLabeler.keywordsFor(text)
-          ..embedding = _jitter(direction, random, 0.06);
-        await db.putSentenceInEntry(entry, sentence);
+        await db.putSentenceInEntry(
+          entry,
+          JournalSentence()
+            ..text = text
+            // Synthetic, so the clustering below works in the Simulator where
+            // real contextual embeddings never arrive.
+            ..embedding = _jitter(direction, random, 0.06),
+        );
 
-        final clusterId = sentence.clusterId;
-        if (clusterId != null) touchedClusters.add(clusterId);
+        // One inference per entry, awaited, so the console reads as a
+        // transcript of the model working through the logs rather than as a
+        // dozen requests landing at once in whatever order they finish.
+        final keywords = await KeywordNamer.forEntry(text);
+        entry.keywords = keywords;
+        await db.putEntry(entry);
+
         created++;
+        AppLog.info(
+          'DebugSeed',
+          'entry $created/$_totalEntries · keywords: ${keywords ?? '—'} · '
+              '"${_short(text)}"',
+        );
       }
     }
 
-    db.relabelClusters(touchedClusters);
-    AppLog.info('DebugSeed', 'seeded $created entries');
+    // Same as a real save: group everything at once now that all of it is in,
+    // rather than living with whatever the incremental pass decided while the
+    // first few sentences had nothing to be measured against.
+    db.reclusterAll(); // unconditional here: the whole point is a fresh set
+
+    // The same path a real save takes, so seeded data exercises the language
+    // model rather than quietly using the fallback and looking worse than the
+    // app actually is.
+    final usedModel = await ClusterNamer.relabelAll(db);
+    final clusters = db.getAllThemeClusters();
+    AppLog.info(
+      'DebugSeed',
+      'seeded $created entries into ${clusters.length} themes, named by '
+          '${usedModel ? 'the model' : 'nothing (the model declined)'}',
+    );
+    for (final cluster in clusters) {
+      AppLog.info(
+        'DebugSeed',
+        'theme ${cluster.id} (${cluster.memberCount} sentences): '
+            '${cluster.label ?? '—'}',
+      );
+    }
     return created;
   }
+
+  static int get _totalEntries =>
+      _topics.fold(0, (sum, topic) => sum + topic.length);
+
+  /// Enough of the entry to recognise which one a line is about.
+  static String _short(String text) =>
+      text.length <= 48 ? text : '${text.substring(0, 48).trimRight()}…';
 
   /// A unit vector along one axis. Distinct axes are near-orthogonal, so
   /// different topics stay well under the 0.70 join threshold.

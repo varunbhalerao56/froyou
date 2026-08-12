@@ -4,14 +4,20 @@ import 'package:flutter/material.dart';
 /// intentionally omitted so the same style works for both light and dark
 /// themes. Apply color via [TextStyle.copyWith] or a [DefaultTextStyle].
 ///
-/// The sizes and `letterSpacing` values are Apple's own tracking for the iOS
-/// type scale. The tracking is what actually makes text read as SF rather than
-/// as a generic geometric sans — don't drop it.
+/// Sizes follow the iOS type scale. Tracking is what actually makes text read
+/// as SF rather than as a generic geometric sans — don't drop it — but it is
+/// **negative above body size and positive only at the smallest sizes**, which
+/// is how optical sizing works: large type needs letters pulled together, small
+/// type needs them opened up. Apple's published per-size tracking table says
+/// the same thing, and the earlier values here had the sign flipped at the top
+/// of the scale, which is what made headings and the Home caption read loose
+/// and unconsidered.
 ///
 /// SF Pro Rounded ships as a single optical family, so unlike SF Pro there is
-/// no Text/Display split to switch on at 20pt. Only the four weights declared
-/// in `pubspec.yaml` exist (400/500/600/700); asking for anything heavier makes
-/// Flutter synthesize a fake bold.
+/// no Text/Display split to switch on at 20pt — the tracking below is doing
+/// that job by hand. Only the four weights declared in `pubspec.yaml` exist
+/// (400/500/600/700); asking for anything heavier makes Flutter synthesize a
+/// fake bold.
 class AppTypography {
   AppTypography._();
 
@@ -22,7 +28,7 @@ class AppTypography {
     fontFamily: fontFamily,
     fontSize: 34,
     fontWeight: FontWeight.w700,
-    letterSpacing: 0.37,
+    letterSpacing: -0.5,
   );
 
   // Primary view title.
@@ -30,7 +36,7 @@ class AppTypography {
     fontFamily: fontFamily,
     fontSize: 28,
     fontWeight: FontWeight.w700,
-    letterSpacing: 0.36,
+    letterSpacing: -0.4,
   );
 
   // Section title.
@@ -38,7 +44,7 @@ class AppTypography {
     fontFamily: fontFamily,
     fontSize: 22,
     fontWeight: FontWeight.w700,
-    letterSpacing: 0.35,
+    letterSpacing: -0.3,
   );
 
   // Subsection title.
@@ -46,7 +52,7 @@ class AppTypography {
     fontFamily: fontFamily,
     fontSize: 20,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.38,
+    letterSpacing: -0.25,
   );
 
   // Emphasized in-content heading.
@@ -123,14 +129,53 @@ class AppTypography {
     letterSpacing: 0.07,
   );
 
-  /// The Home hero quote. Larger and looser than [largeTitle] because it sits
-  /// alone on the image with nothing to compete with.
+  /// Past log entries. A notch above [body], with looser leading: these are
+  /// read, not scanned, and they're the user's own words rather than UI.
+  static const TextStyle logBody = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 19,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.4,
+    height: 1.35,
+  );
+
+  /// The compose field. Bigger again — this is where you're actually looking
+  /// while dictating or typing, often at arm's length.
+  static const TextStyle composeInput = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 21,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.4,
+    height: 1.35,
+  );
+
+  /// The Home caption, above the picture.
+  ///
+  /// Brought down from 30 and pulled tight. At 30 with open tracking it was
+  /// the loudest thing on the screen and routinely wrapped to two lines, which
+  /// left the prompt below the image looking like a footnote to it rather than
+  /// the question the screen is actually asking.
   static const TextStyle quote = TextStyle(
     fontFamily: fontFamily,
-    fontSize: 30,
+    fontSize: 25,
     fontWeight: FontWeight.w600,
-    letterSpacing: 0.36,
-    height: 1.2,
+    letterSpacing: -0.4,
+    height: 1.22,
+  );
+
+  /// The line under the picture — "How are you feeling?", or the follow-up.
+  ///
+  /// Deliberately within two points of [quote]. The caption and the question
+  /// are the only two pieces of text on Home, and stepping the second one down
+  /// to a label size made it read as an annotation on the picture rather than
+  /// as the thing being asked. Weight and colour carry the hierarchy instead —
+  /// which is a quieter way to say it than size.
+  static const TextStyle prompt = TextStyle(
+    fontFamily: fontFamily,
+    fontSize: 23,
+    fontWeight: FontWeight.w500,
+    letterSpacing: -0.35,
+    height: 1.28,
   );
 
   /// Builds the Material [TextTheme] from this scale. Wired into [ThemeData]

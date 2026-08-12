@@ -3,13 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:froyou/core/logging/app_log.dart';
 import 'package:froyou/features/home/data/speech_source.dart';
+import 'package:froyou/features/home/data/transcript_words.dart';
 import 'package:froyou/services/services.dart';
 
 enum ComposeMode {
   /// Nothing open. The backdrop is at full height.
   idle,
 
-  /// Recording. The text field is read-only while partials stream in.
+  /// Recording. The editable field is out of the tree entirely; the live
+  /// transcript renders in its place.
   voice,
 
   /// Typing, or editing what was just dictated.
@@ -29,13 +31,11 @@ enum ComposeMode {
 /// seam this design depends on. The shell also needs to read the animation's
 /// status to lock scrolling.
 class ComposeController extends ChangeNotifier {
-  ComposeController({
-    required TickerProvider vsync,
-    required this._onSave,
-  }) : expand = AnimationController(
-         vsync: vsync,
-         duration: const Duration(milliseconds: 320),
-       ) {
+  ComposeController({required TickerProvider vsync, required this._onSave})
+    : expand = AnimationController(
+        vsync: vsync,
+        duration: const Duration(milliseconds: 320),
+      ) {
     // Republish the text field's own changes. [canSave] is derived from the
     // field's contents, and listeners subscribe to this controller — not to
     // the TextEditingController — so without this the Save button never
@@ -85,11 +85,11 @@ class ComposeController extends ChangeNotifier {
   StreamSubscription<SpeechStatus>? _statusSub;
   StreamSubscription<SpeechDownloadProgress>? _downloadSub;
 
-  /// Settled text, kept apart from the in-flight partial. Without the split,
-  /// a revised partial would overwrite sentences the recognizer already
-  /// committed.
-  final List<String> _finals = [];
-  String _partial = '';
+  /// The live transcript, word by word. Holds the settled/in-flight split that
+  /// keeps a revised partial from overwriting sentences the recognizer already
+  /// committed, and gives each word the stable identity [TranscriptView] needs
+  /// to fade in only what is new.
+  final TranscriptWords words = TranscriptWords();
 
   ComposeMode get mode => _mode;
   bool get isOpen => _mode != ComposeMode.idle;
@@ -164,6 +164,7 @@ class ComposeController extends ChangeNotifier {
     _error = message;
     _errorIsPermissions = isPermissions;
     _setMode(ComposeMode.text);
+    _scrollTranscriptToEnd();
   }
 
   Future<void> _preflight(SpeechSource speech) async {
@@ -190,8 +191,7 @@ class ComposeController extends ChangeNotifier {
 
   void _listenToSpeech(SpeechSource speech) {
     _cancelSpeechSubscriptions();
-    _finals.clear();
-    _partial = '';
+    words.clear();
 
     _transcriptSub = speech.transcripts.listen(
       _onTranscript,
@@ -217,23 +217,23 @@ class ComposeController extends ChangeNotifier {
   }
 
   void _onTranscript(SpeechTranscript transcript) {
-    if (transcript.isFinal) {
-      _finals.add(transcript.text);
-      _partial = '';
-    } else {
-      _partial = transcript.text;
-    }
+    words.ingest(transcript);
 
-    final joined = [..._finals, if (_partial.isNotEmpty) _partial].join(' ');
+    // The field is unmounted while recording, but keep writing it anyway: that
+    // is what makes the handoff free — nothing is transferred at the seam, the
+    // editable field simply takes over an already-current value.
+    final joined = words.joined;
     text.value = TextEditingValue(
       text: joined,
       selection: TextSelection.collapsed(offset: joined.length),
     );
 
-    _scrollTranscriptToEnd();
     notifyListeners();
   }
 
+  /// Called at the handoff, not per transcript: while recording, the field is
+  /// not in the tree at all, so [textScroll] has no clients to scroll.
+  /// [TranscriptView] follows its own tail; this catches the field up to it.
   void _scrollTranscriptToEnd() {
     // Post-frame, because the field hasn't laid out the new line yet and
     // maxScrollExtent is still the previous value.
@@ -259,7 +259,11 @@ class ComposeController extends ChangeNotifier {
 
     _cancelSpeechSubscriptions();
     _downloadFraction = null;
+    // Deliberately no focus request: raising the keyboard the instant you stop
+    // talking re-lays-out the whole pane on top of the widget swap. The static
+    // caret carries the "you can edit this" affordance instead.
     _setMode(ComposeMode.text);
+    _scrollTranscriptToEnd();
   }
 
   // ---------------------------------------------------------------------------
@@ -294,8 +298,7 @@ class ComposeController extends ChangeNotifier {
 
     focusNode.unfocus();
     text.clear();
-    _finals.clear();
-    _partial = '';
+    words.clear();
     _downloadFraction = null;
     _clearError();
 

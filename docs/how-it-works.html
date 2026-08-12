@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Froyou — how it actually works</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --card: #1c1f25;
+    --line: #2a2f38;
+    --text: #e8eaed;
+    --dim: #a2a9b4;
+    --faint: #6d7480;
+    --accent: #9db4ff;
+    --warm: #ffc48a;
+    --good: #8fd6a8;
+    --bad: #ff9d9d;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 20px 120px;
+    background: var(--bg); color: var(--text);
+    font: 16px/1.65 ui-rounded, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 56px 0 8px; letter-spacing: -0.02em; }
+  h2 {
+    font-size: 24px; margin: 64px 0 4px; letter-spacing: -0.01em;
+    padding-top: 24px; border-top: 1px solid var(--line);
+  }
+  h3 { font-size: 17px; margin: 32px 0 4px; color: var(--accent); }
+  p { margin: 12px 0; }
+  .lede { color: var(--dim); font-size: 18px; }
+  .dim { color: var(--dim); }
+  .faint { color: var(--faint); font-size: 14px; }
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  code { background: #22262d; padding: 1px 5px; border-radius: 4px; color: var(--warm); }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px 20px; margin: 20px 0;
+  }
+  .card h4 { margin: 0 0 6px; font-size: 15px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--faint); }
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--faint); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td.mono { font-family: var(--mono); font-size: 13px; color: var(--warm); white-space: nowrap; }
+
+  /* flow chart */
+  .flow { margin: 24px 0; }
+  .step {
+    display: grid; grid-template-columns: 34px 1fr; gap: 14px;
+    padding: 14px 0; border-bottom: 1px dashed var(--line);
+  }
+  .step:last-child { border-bottom: none; }
+  .num {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: #262b34; color: var(--accent);
+    display: grid; place-items: center; font-size: 14px; font-weight: 700;
+  }
+  .step h4 { margin: 3px 0 4px; font-size: 16px; }
+  .step p { margin: 4px 0; font-size: 15px; color: var(--dim); }
+  .arrow { color: var(--faint); text-align: center; font-size: 20px; margin: -6px 0; }
+
+  .example {
+    background: #10141a; border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 12px 0;
+    font-family: var(--mono); font-size: 13px; line-height: 1.7; color: var(--dim);
+    overflow-x: auto; white-space: pre-wrap;
+  }
+  .example b { color: var(--text); font-weight: 600; }
+  .good { color: var(--good); }
+  .bad { color: var(--bad); }
+  .warm { color: var(--warm); }
+
+  .pill {
+    display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 20px;
+    background: #262b34; color: var(--dim); margin-right: 6px;
+  }
+  .bar { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 14px; }
+  .bar .track { flex: 1; height: 8px; background: #22262d; border-radius: 4px; position: relative; }
+  .bar .fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .bar .label { width: 128px; color: var(--dim); font-size: 13px; }
+  .bar .val { width: 56px; text-align: right; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Froyou, end to end</h1>
+<p class="lede">
+  You say something. The app writes it down, works out what it was about, and
+  notices when you keep coming back to the same thing — even when you never use
+  the same words twice. Every bit of that happens on the phone.
+</p>
+<p class="faint">
+  Written for someone who hasn't seen the code. Names in <code>this font</code>
+  are real things you can search for.
+</p>
+
+<h2>The one-minute version</h2>
+<div class="card">
+  <p style="margin:0">
+    Your words are saved <b>immediately</b>. Everything clever happens
+    <b>afterwards</b>, in the background, and if any of it fails you still
+    have your words. That split is the single most important design rule in
+    the app.
+  </p>
+</div>
+
+<h2>What happens when you save a log</h2>
+
+<div class="flow">
+
+  <div class="step">
+    <div class="num">1</div>
+    <div>
+      <h4>Your words get written to disk. That's it.</h4>
+      <p>
+        <code>JournalRepository.save()</code> stores the raw text and returns
+        straight away. No AI, no waiting, nothing that can fail.
+      </p>
+      <div class="example"><b>You:</b> "Work has been okay, but I've been waiting for replies
+     from the Malaysian team. I do feel a bit anxious."
+
+<span class="good">✓ saved</span>  — visible in your log list instantly</div>
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div>
+      <h4>A mood score</h4>
+      <p>
+        Apple's <code>NLTagger</code> reads the text and returns a number from
+        −1 (bleak) to +1 (good). That's the little coloured dot on the card.
+      </p>
+      <div class="example"><span class="warm">mood −0.31</span>   → the dot turns red-ish</div>
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="num">3</div>
+    <div>
+      <h4>Keywords, from the language model</h4>
+      <p>
+        Apple's on-device language model reads the entry and names what it was
+        about. This is <em>not</em> word-counting — it can say "shame" about an
+        entry that never uses the word.
+      </p>
+      <div class="example"><span class="good">keywords: work, anxiety, replies</span></div>
+      <p class="faint">
+        <code>KeywordNamer</code> → <code>GenAiService.entryKeywords</code> →
+        Swift <code>GenAiChannel</code>
+      </p>
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="num">4</div>
+    <div>
+      <h4>The entry is cut into sentences, and each becomes a list of numbers</h4>
+      <p>
+        Apple's <code>NLContextualEmbedding</code> turns each sentence into
+        <b>512 numbers</b> — an "embedding". Sentences that <em>mean</em>
+        similar things end up with similar numbers, even with no words in
+        common. This is the trick that makes the whole app work.
+      </p>
+      <div class="example">"I've been waiting for replies"  →  [0.031, −0.118, 0.204, … ]  <span class="faint">(512 of them)</span>
+"Still nothing back from them"  →  [0.029, −0.121, 0.199, … ]  <span class="faint">← nearly identical</span></div>
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="num">5</div>
+    <div>
+      <h4>Sentences get grouped into themes</h4>
+      <p>
+        Similar sentences are gathered into a <code>ThemeCluster</code>. This
+        is the hard part and it has its own section below.
+      </p>
+    </div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="step">
+    <div class="num">6</div>
+    <div>
+      <h4>Each theme gets a name</h4>
+      <p>
+        The language model reads the six most representative sentences from a
+        theme and names it. It sees all themes together, so the names
+        distinguish each other rather than all landing on the same word.
+      </p>
+      <div class="example"><span class="good">"waiting on work"</span>   <span class="faint">← from 6 sentences across 4 different entries</span></div>
+    </div>
+  </div>
+
+</div>
+
+<h2>The hard part: grouping by meaning</h2>
+
+<p>
+  You'd think you could just measure how similar two sentences' numbers are and
+  group the close ones. That's what we tried. It failed completely, and how it
+  failed is the most interesting thing in this codebase.
+</p>
+
+<h3>Attempt 1 — measure similarity directly</h3>
+<p>
+  The standard measure is <b>cosine similarity</b>: 1.0 means identical
+  direction, 0 means unrelated. Here's what real entries scored against a
+  theme the app had named "anxiety":
+</p>
+
+<div class="card">
+  <div class="bar"><span class="label">cooking Maggi</span><span class="track"><span class="fill" style="left:0;width:89.8%;background:#ff9d9d"></span></span><span class="val">0.898</span></div>
+  <div class="bar"><span class="label">an audiobook</span><span class="track"><span class="fill" style="left:0;width:93.3%;background:#ff9d9d"></span></span><span class="val">0.933</span></div>
+  <div class="bar"><span class="label">my girlfriend</span><span class="track"><span class="fill" style="left:0;width:92.4%;background:#ff9d9d"></span></span><span class="val">0.924</span></div>
+  <p class="faint" style="margin:10px 0 0">
+    Cooking, a book and a relationship — all ~0.9 "similar" to anxiety.
+    Everything landed in one theme.
+  </p>
+</div>
+
+<p>
+  The cause has a name: <b>anisotropy</b>. These embeddings all share one big
+  common direction — roughly "this is a sentence in English" — and it drowns
+  out the part that's actually about cooking. Any two English sentences start
+  at ~0.9 before content is even considered. <b>There is no cutoff that works.</b>
+</p>
+
+<h3>The fix — subtract what everything has in common</h3>
+<p>
+  Average every sentence you've ever written into one vector. That average
+  <em>is</em> the shared direction. Subtract it from each sentence, and what
+  survives is only the distinctive part.
+</p>
+
+<div class="example">before:  every sentence points mostly the same way   → all ~0.9 similar
+subtract the average
+after:   unrelated sentences point in random directions → ~0.0 similar
+         related ones still point together              → 0.3–0.6 similar</div>
+
+<div class="card">
+  <h4>Same data, after centring</h4>
+  <div class="bar"><span class="label">unrelated (median)</span><span class="track"><span class="fill" style="left:50%;width:1.8%;background:#6d7480"></span></span><span class="val">−0.036</span></div>
+  <div class="bar"><span class="label">related (p99)</span><span class="track"><span class="fill" style="left:50%;width:25.6%;background:#8fd6a8"></span></span><span class="val">0.513</span></div>
+  <p class="faint" style="margin:10px 0 0">Now there's a real gap to cut in.</p>
+</div>
+
+<h3>Attempt 2, 3, 4 — where do you put the line?</h3>
+<p>Three sensible-sounding answers, all wrong:</p>
+
+<table>
+  <tr><th>Cutoff</th><th>Reasoning</th><th>What happened</th></tr>
+  <tr>
+    <td class="mono">0.55</td>
+    <td>Worked on the built-in test data</td>
+    <td class="bad">26 sentences → 25 separate themes</td>
+  </tr>
+  <tr>
+    <td class="mono">0.177</td>
+    <td>4× the mathematical noise floor</td>
+    <td class="bad">An audiobook filed under "work"</td>
+  </tr>
+  <tr>
+    <td class="mono">top 10%</td>
+    <td>"Assume a tenth of pairs are related"</td>
+    <td class="bad">In the test data it's a fifth — broke it</td>
+  </tr>
+</table>
+
+<h3>The answer — Otsu's method</h3>
+<p>
+  Stop choosing. <b>Measure every pair of sentences and look at the shape of
+  the results.</b> They form two humps: a big one near zero (sentences that
+  merely share a language) and a smaller one further out (sentences that share
+  a subject). The cutoff belongs in the valley between them.
+</p>
+<p>
+  Otsu's method — borrowed from image processing, where it decides which pixels
+  are ink and which are paper — finds that valley automatically. It tries every
+  possible cut and keeps the one that makes the two groups <em>most different
+  from each other</em>.
+</p>
+
+<div class="example">all pair scores, sorted:
+
+−0.4  −0.3  −0.28  −0.16  −0.09  <span class="warm">│</span>  0.81  0.82  0.83  0.85  0.847
+<span class="faint">└──────── unrelated ────────┘</span>  <span class="warm">↑</span>  <span class="faint">└──── related ────┘</span>
+                           <span class="warm">cut here: 0.333</span>
+
+<span class="good">result: exactly 13 of 66 pairs join — the exact 13 that share a topic</span></div>
+
+<p>
+  Nothing is assumed about where the line sits or how many pairs fall either
+  side. It re-measures on every rebuild, so it adapts to how repetitive your
+  writing happens to be. One guard remains: a <b>noise floor</b> of
+  4&nbsp;÷&nbsp;√512&nbsp;≈&nbsp;0.177, below which a score is
+  indistinguishable from two random sentences — so a genuinely varied journal
+  can't collapse into a single theme.
+</p>
+
+<h3>One more trap — order dependence</h3>
+<p>
+  Sentences arrive one at a time, but the average needs lots of text to
+  estimate. So the first few are grouped using the measure that doesn't work —
+  and nothing goes back to check. Worse, a theme's "centre" drifts as it
+  absorbs sentences, until it sits in the middle of everything and attracts
+  everything.
+</p>
+<p>
+  So the app rebuilds all themes from scratch, oldest first, rather than only
+  adding new sentences to old groups. <code>reclusterAll()</code>.
+  It doesn't run on <em>every</em> save though — only once per launch, and then
+  when the journal grows by half again or the average actually shifts.
+  <code>maybeRecluster()</code> makes that call.
+</p>
+
+<h2>Where things are stored — ObjectBox</h2>
+<p>
+  ObjectBox is the on-device database. Three kinds of object, and a handful of
+  methods do all the work.
+</p>
+
+<table>
+  <tr><th>Object</th><th>Holds</th></tr>
+  <tr><td class="mono">JournalEntry</td><td>your raw text, keywords, mood score, timestamp</td></tr>
+  <tr><td class="mono">JournalSentence</td><td>one sentence, its 512 numbers, which theme it belongs to</td></tr>
+  <tr><td class="mono">ThemeCluster</td><td>a theme's name, member count, and its running centre</td></tr>
+</table>
+
+<h3>The methods, and why each one</h3>
+<table>
+  <tr><th>Call</th><th>What it does</th></tr>
+  <tr><td class="mono">box.put(o)</td><td>Insert or update, returning the new id. Used synchronously when saving a log — the async variant never completes under a test's fake clock.</td></tr>
+  <tr><td class="mono">box.putMany(list)</td><td>Writes a batch in one go. The theme rebuild uses it so hundreds of sentences cost one write.</td></tr>
+  <tr><td class="mono">box.getAll()</td><td>Everything of one kind. Deliberately rare on sentences — that's thousands of 512-number vectors.</td></tr>
+  <tr><td class="mono">box.removeAll()</td><td>Clears a box. The rebuild throws away every theme before regrouping.</td></tr>
+  <tr><td class="mono">box.query(…).build().find()</td><td>Filtered reads — "sentences in this theme", "entries since Monday".</td></tr>
+  <tr><td class="mono">store.runInTransaction(…)</td><td>All-or-nothing. The rebuild deletes every theme and reassigns every sentence inside one, so a crash halfway can't leave orphans.</td></tr>
+  <tr><td class="mono">sentence.entry.target</td><td>A <em>relation</em> — a link to the owning entry. Reading its id before the object is saved throws, which cost a debugging round once.</td></tr>
+</table>
+
+<div class="card">
+  <h4>A small trick worth knowing</h4>
+  <p style="margin:0" class="dim">
+    Every <code>ThemeCluster</code> keeps <code>sumVector</code> — the running
+    total of its members' numbers. So the average across the entire journal is
+    just the sum of a few dozen themes' totals, rather than loading thousands
+    of sentences. That one change removed the most expensive step in the app.
+  </p>
+</div>
+
+<div class="card">
+  <h4>Vector search, and why it's unused</h4>
+  <p style="margin:0" class="dim">
+    ObjectBox has a built-in nearest-neighbour index
+    (<code>nearestNeighborsF32</code>) and the app used it at first. It can only
+    rank <em>raw</em> vectors — the exact measure we established doesn't work
+    here — so scoring moved into plain Dart. With only tens of themes, checking
+    them all costs nothing.
+  </p>
+</div>
+
+<h2>Searching your journal</h2>
+<p>
+  Two searches at once, because each fails where the other works.
+</p>
+<div class="example"><b>you search:</b> "sleep"
+
+<span class="pill">literal</span> "I only got four hours of <b>sleep</b>"        <span class="faint">← the word is there</span>
+<span class="pill">meaning</span> "I couldn't switch off last night"    <span class="faint">← never says sleep</span></div>
+<p class="dim">
+  Literal matching misses the second. Meaning-matching misses names and places,
+  which carry almost no semantic weight. So both run, literal results first —
+  if the word is actually there, that's the more certain answer. Meaning
+  matches are labelled <span class="pill">similar in meaning</span> in the UI,
+  because otherwise a result that doesn't contain your search term looks like a
+  bug. <code>JournalSearch</code>.
+</p>
+
+<h2>The follow-up question</h2>
+<p>
+  If yesterday averaged rough and you haven't written today, the prompt on the
+  home screen changes from "How are you feeling?" to something written for you.
+  The model gets your recent theme names and a short excerpt.
+</p>
+<div class="example"><b>themes:</b>  waiting on work · unsettled sleep
+<b>excerpt:</b> "I do feel a bit anxious about some parts."
+        ↓
+<span class="good">"Is that still sitting with you this morning?"</span></div>
+<p class="dim">
+  It only ever appears the day <em>after</em> — asking while you're still in it
+  is nagging, not reflection. It clears the moment you write. And it's judged
+  on the day's <em>average</em>, so one grumble in an otherwise fine day doesn't
+  summon a check-in. <code>FollowUpService</code>. Settings → Developer →
+  <b>Preview follow-up question</b> shows the whole exchange on demand.
+</p>
+
+<h2>When the model isn't there</h2>
+<p>
+  Apple's language model needs recent hardware and Apple Intelligence switched
+  on. It's often simply absent, so nothing may depend on it.
+</p>
+<table>
+  <tr><th>Feature</th><th>Without the model</th></tr>
+  <tr><td>Your words</td><td class="good">Unaffected — never touched it</td></tr>
+  <tr><td>Mood dot</td><td class="good">Unaffected — different Apple framework</td></tr>
+  <tr><td>Grouping into themes</td><td class="good">Unaffected — that's embeddings, not the model</td></tr>
+  <tr><td>Keywords</td><td class="dim">Falls back to word frequency</td></tr>
+  <tr><td>Theme names</td><td class="dim">Falls back to a statistical method</td></tr>
+  <tr><td>Follow-up question</td><td class="dim">Simply doesn't appear</td></tr>
+</table>
+<p class="faint">
+  During development <code>kModelOnlyLabels</code> turns those fallbacks off, so
+  blank means "the model said nothing" rather than something quietly filling in.
+</p>
+
+<h2>Nothing leaves the phone</h2>
+<p>
+  Transcription, mood, embeddings, grouping and naming are all Apple frameworks
+  running locally. There is no server, no account, and no network call anywhere
+  in the app. That's a product promise, not a detail of the current build.
+</p>
+
+<p class="faint" style="margin-top:64px">
+  Deeper technical notes, including the failed approaches in more detail, are in
+  <code>CLAUDE.md</code> at the repo root.
+</p>
+
+</main>
+</body>
+</html>

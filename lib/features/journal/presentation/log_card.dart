@@ -37,16 +37,28 @@ class LogCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
-          vertical: AppSpacing.xs,
+          vertical: AppSpacing.sm,
         ),
+        // No border. A soft wash plus a low, wide shadow is enough to separate
+        // one entry from the next and to lift it off the moving background;
+        // an outline turns a quiet list of your own thoughts into a form.
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: colors.card.withValues(alpha: 0.7),
+            color: colors.card.withValues(alpha: 0.72),
             borderRadius: AppRadius.mdAll,
-            border: Border.all(color: colors.border.withValues(alpha: 0.6)),
+            // Tight and close. A wide soft shadow reaches into the next card's
+            // gap, and once every gap is filled the list reads as banded
+            // rather than as a stack of separate things.
+            boxShadow: [
+              // BoxShadow(
+              //   color: colors.cardShadow,
+              //   blurRadius: 10,
+              //   offset: const Offset(0, 3),
+              // ),
+            ],
           ),
           child: Padding(
-            padding: AppInsets.md,
+            padding: AppInsets.lg,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -54,7 +66,7 @@ class LogCard extends StatelessWidget {
                   children: [
                     Text(
                       _formatDate(entry.createdAt),
-                      style: AppTypography.caption.copyWith(
+                      style: AppTypography.footnote.copyWith(
                         color: colors.textSecondary,
                       ),
                     ),
@@ -75,13 +87,15 @@ class LogCard extends StatelessWidget {
                 AppGap.smV,
                 Text(
                   text,
-                  style: AppTypography.body.copyWith(color: colors.textPrimary),
+                  style: AppTypography.logBody.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
                 if (entry.keywords != null && entry.keywords!.isNotEmpty) ...[
                   AppGap.smV,
                   Text(
                     entry.keywords!,
-                    style: AppTypography.caption.copyWith(
+                    style: AppTypography.footnote.copyWith(
                       color: colors.placeholder,
                     ),
                   ),

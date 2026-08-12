@@ -16,7 +16,7 @@ class AnalyticsView extends StatelessWidget {
     ).compute();
 
     return Scaffold(
-      backgroundColor: palette.bottomEdge,
+      backgroundColor: palette.colors.background,
       appBar: AppBar(
         title: const Text('Patterns'),
         backgroundColor: Colors.transparent,
@@ -61,7 +61,7 @@ class _Patterns extends StatelessWidget {
           for (final trend in snapshot.trends)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: _TrendRow(trend: trend, colors: colors),
+              child: TrendRow(trend: trend),
             ),
         ],
       ],
@@ -105,41 +105,64 @@ class _LogCountTile extends StatelessWidget {
   }
 }
 
-class _TrendRow extends StatelessWidget {
-  const _TrendRow({required this.trend, required this.colors});
+/// One recurring theme: the phrase that distinguishes it, how often it came
+/// up, and the user's own most central sentence about it.
+class TrendRow extends StatelessWidget {
+  const TrendRow({required this.trend, super.key});
 
   final ThemeTrend trend;
-  final AppColors colors;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colors.card.withValues(alpha: 0.7),
+        color: colors.card.withValues(alpha: 0.5),
         borderRadius: AppRadius.mdAll,
-        border: Border.all(color: colors.border.withValues(alpha: 0.6)),
       ),
       child: Padding(
         padding: AppInsets.md,
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: RichText(
-                text: TextSpan(
-                  style: AppTypography.body.copyWith(color: colors.textPrimary),
-                  children: [
-                    const TextSpan(text: 'You talked about '),
-                    TextSpan(
-                      text: '"${trend.label}"',
-                      style: AppTypography.bodyBold.copyWith(
-                        color: colors.primary,
-                      ),
-                    ),
-                    TextSpan(text: ' ${_times(trend.occurrences)}'),
-                  ],
+            RichText(
+              text: TextSpan(
+                style: AppTypography.logBody.copyWith(
+                  color: colors.textPrimary,
                 ),
+                children: [
+                  const TextSpan(text: 'You talked about '),
+                  TextSpan(
+                    text: '"${trend.label}"',
+                    style: AppTypography.logBody.copyWith(
+                      color: colors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(text: ' ${_times(trend.occurrences)}'),
+                ],
               ),
             ),
+            // The label alone is a handle, not a thought. These are the
+            // sentences the count is counting, most typical first — the user's
+            // own words, which is what makes the pattern recognizable rather
+            // than abstract, and what makes "five times" checkable instead of
+            // something the app merely asserts.
+            for (final quote in [
+              if (trend.representative != null) trend.representative!,
+              ...trend.examples,
+            ]) ...[
+              AppGap.smV,
+              Text(
+                '“$quote”',
+                style: AppTypography.subheadline.copyWith(
+                  color: colors.textSecondary,
+                  fontStyle: FontStyle.italic,
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
         ),
       ),
