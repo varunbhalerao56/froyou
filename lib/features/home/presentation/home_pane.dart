@@ -33,6 +33,7 @@ class HomePane extends StatelessWidget {
     required this.prompt,
     required this.chromeOpacity,
     this.layout = HomeLayout.fullBleed,
+    this.breathe = true,
     super.key,
   });
 
@@ -56,11 +57,22 @@ class HomePane extends StatelessWidget {
   /// doesn't care gets the same thing the app does.
   final HomeLayout layout;
 
+  /// The backdrop's slow scale. Off in goldens: it never reaches a resting
+  /// frame, and a golden is a resting frame.
+  final bool breathe;
+
   static const double _captionHeight = 76;
 
-  /// Two lines of [AppTypography.prompt] with a little air. A generated
-  /// follow-up runs longer than "How are you feeling?" and wraps, and the box
-  /// has to hold it without clipping.
+  /// How long a follow-up may run before it is cut short. A generated question
+  /// is longer than "How are you feeling?" and a good one often carries a
+  /// clause that a two-line ellipsis takes the point out of.
+  static const int promptMaxLines = 3;
+
+  /// Two lines of [AppTypography.prompt] with a little air — the floor rather
+  /// than the figure. A question that needs a third line takes one (see
+  /// [_reservedFor]); one that fits in two changes nothing, which is what
+  /// keeps a short prompt from costing the photograph thirty points it was
+  /// never going to use.
   static const double _promptHeight = 68;
 
   /// Room the controls row needs at the bottom of the pane.
@@ -69,6 +81,36 @@ class HomePane extends StatelessWidget {
   /// [HomeLayout.typeFirst] gives the prompt the top of the screen, so it is
   /// set larger and needs more room than it does under the image.
   static const double _leadPromptHeight = 92;
+
+  /// What the prompt's slot has to be to hold [prompt] whole, never less than
+  /// [floor].
+  ///
+  /// Measured rather than assumed: the slot is a fixed height that the pane's
+  /// invariant is built on, so the only way to let a question run to three
+  /// lines *sometimes* is to ask how many lines this particular question takes.
+  /// Deliberately computed outside the compose animation — it depends on the
+  /// text, the style and the width, and none of those move while the chrome
+  /// collapses.
+  double _reservedFor(BuildContext context, TextStyle style, double floor) {
+    final width = MediaQuery.sizeOf(context).width - AppSpacing.lg * 2;
+    if (width <= 0) return floor;
+
+    final painter = TextPainter(
+      text: TextSpan(text: prompt, style: style),
+      textDirection: TextDirection.ltr,
+      textAlign: TextAlign.center,
+      maxLines: promptMaxLines,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: width);
+    final height = painter.height;
+    // Read before disposing, and read off the painter rather than multiplied
+    // out of the style: this one already has the text scaler in it.
+    final line = painter.preferredLineHeight;
+    painter.dispose();
+
+    // Whatever air the two-line figure was carrying, kept for a third line.
+    return math.max(floor, height + floor - line * 2);
+  }
 
   /// The strip of image [HomeLayout.typeFirst] keeps at the bottom.
   static const double _stripHeight = 140;
@@ -80,6 +122,20 @@ class HomePane extends StatelessWidget {
     // instead; without this the caption and the compose field slide under the
     // clock and the dynamic island.
     final topInset = MediaQuery.paddingOf(context).top;
+
+    // Once per build of the pane, not once per frame of the compose animation:
+    // laying out a line of text sixty times a second to learn something that
+    // cannot have changed is the sort of thing that only shows up on a device.
+    final promptHeight = _reservedFor(
+      context,
+      AppTypography.prompt,
+      _promptHeight,
+    );
+    final leadPromptHeight = _reservedFor(
+      context,
+      AppTypography.quote,
+      _leadPromptHeight,
+    );
 
     return SizedBox(
       height: height,
@@ -110,6 +166,8 @@ class HomePane extends StatelessWidget {
                 t: t,
                 chromeHeight: chromeHeight,
                 chromeOut: chromeOut,
+                promptExtent: promptHeight,
+                leadPromptExtent: leadPromptHeight,
               ),
               Expanded(
                 child: t <= 0.01
@@ -180,6 +238,7 @@ class HomePane extends StatelessWidget {
                             glowColor: palette.glow,
                             imageHeight: height,
                             blurSigma: lerpDouble(40, 22, t)!,
+                            breathe: breathe,
                           ),
                         ),
                       )
@@ -220,11 +279,13 @@ class HomePane extends StatelessWidget {
     required double t,
     required double chromeHeight,
     required double chromeOut,
+    required double promptExtent,
+    required double leadPromptExtent,
   }) {
     if (chromeOut <= 0.01) return [SizedBox(height: chromeHeight)];
 
     final captionHeight = lerpDouble(_captionHeight, 0, t)!;
-    final promptHeight = lerpDouble(_promptHeight, 0, t)!;
+    final promptHeight = lerpDouble(promptExtent, 0, t)!;
 
     Widget caption() => _Caption(
       backdrops: backdrops,
@@ -250,6 +311,7 @@ class HomePane extends StatelessWidget {
         // Cheaper mid-flight: the two-pass Gaussian is the one real cost
         // here, and fewer taps per pixel is the most direct lever on it.
         blurSigma: lerpDouble(40, 22, t)!,
+        breathe: breathe,
       ),
     );
 
@@ -341,7 +403,7 @@ class HomePane extends StatelessWidget {
         ];
 
       case HomeLayout.typeFirst:
-        final leadHeight = lerpDouble(_leadPromptHeight, 0, t)!;
+        final leadHeight = lerpDouble(leadPromptExtent, 0, t)!;
         final stripHeight = math.min(
           lerpDouble(_stripHeight, 0, t)!,
           math.max(0.0, chromeHeight - leadHeight),
@@ -411,6 +473,13 @@ class _Scrim extends StatelessWidget {
   /// short of the full background colour leaves a hard line across the seam.
   final double bottomAlpha;
 
+  /// A smoothstep, sampled. This gradient used to be four stops — a straight
+  /// line down to nothing and then a corner where it flattened — and over a
+  /// bright sky that corner was a hard line straight across the screen at 30%.
+  /// A ramp has to arrive at its ends with no slope or the eye finds where it
+  /// stopped.
+  static const List<double> _ease = [1, 0.844, 0.5, 0.156, 0];
+
   @override
   Widget build(BuildContext context) {
     final background = palette.colors.background;
@@ -420,12 +489,14 @@ class _Scrim extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            background.withValues(alpha: topAlpha),
-            background.withValues(alpha: 0),
-            background.withValues(alpha: 0),
-            background.withValues(alpha: bottomAlpha),
+            for (final t in _ease) background.withValues(alpha: topAlpha * t),
+            for (final t in _ease.reversed)
+              background.withValues(alpha: bottomAlpha * t),
           ],
-          stops: const [0.0, 0.3, 0.5, 1.0],
+          stops: [
+            for (var i = 0; i < _ease.length; i++) 0.3 * i / 4,
+            for (var i = 0; i < _ease.length; i++) 0.5 + 0.5 * i / 4,
+          ],
         ),
       ),
     );
@@ -515,7 +586,7 @@ class _Prompt extends StatelessWidget {
               prompt,
               key: ValueKey(prompt),
               textAlign: TextAlign.center,
-              maxLines: 2,
+              maxLines: HomePane.promptMaxLines,
               overflow: TextOverflow.ellipsis,
               style: (style ?? AppTypography.prompt).copyWith(
                 color: palette.colors.textSecondary,

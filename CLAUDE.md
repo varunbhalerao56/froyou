@@ -61,7 +61,8 @@ lib/
   core/
     theme/                  AppColors, AppPalette, ThemePresets, ThemeSettings,
                             AppTypography (SF Pro Rounded), spacing/radius
-    ui/                     EdgeGlowImage, LivingBackdrop, NoiseOverlay,
+    ui/                     EdgeGlowImage, BackdropPhoto, BreathingScale,
+                            LivingBackdrop, NoiseOverlay,
                             Illustration + IllustrationView, color_utils
   features/
     home/                   HomeShell (Home + Logs as one scroll), HomePane,
@@ -71,7 +72,8 @@ lib/
                             ClusterLabeler (fallback), ClusterNamer and
                             KeywordNamer (model-first)
     onboarding/             the paged first-run flow
-    profile/                backdrops, theme settings, settings
+    profile/                backdrops, BackdropFramingView, theme settings,
+                            settings
     reminders/              ReminderSettings, ReminderService, Settings section
     analytics/              AnalyticsService + view
     debug/                  seed data, debug menu, channel test, layout gallery
@@ -153,6 +155,17 @@ re-rendered at full DPR on every frame Home was *idle*. It also resampled the
 photo each frame, which read as shimmer on fine detail. The boundary only pays
 off when what is above it holds still.
 
+**Animate a snapshot instead.** `BreathingScale` is the slow scale that drift
+wanted to be, and it works because `SnapshotWidget` rasterizes its child once
+and repaints *that* under a new matrix — a frame is one textured quad, and
+nothing below is asked to draw again. It only ever scales up, since shrinking
+would open an edge the raster has nothing to fill. **A raster does not follow
+its child:** the snapshot is not invalidated when the child repaints on its
+own, so `_Breathing` in `backdrop_carousel.dart` waits for the photo's decode
+before enabling it — arm it a frame early and Home breathes a placeholder
+gradient until something else rebuilds. Every rebuild re-takes the snapshot,
+which is why that has to stay cheap.
+
 **Widget tests must mock `app/genai`.** Anything that saves a log or seeds data
 reaches `ClusterNamer`, which asks the model if it's available. Unmocked, that
 call never completes under the fake clock and the test hangs to its timeout.
@@ -166,6 +179,14 @@ stays null. Recording *looks* like it started — the transcript view is on
 screen — but Stop silently does nothing, because `stopVoice` early-returns on
 the source it never got. Use `mockSpeech()` from `test/support/speech_mock.dart`;
 `supported: false` routes the debug build to `FakeSpeechSource`.
+
+**`precacheImage` has to run before the widget that wants the photo.** Mount it
+first and the decode starts inside the fake-async zone, where it only advances
+on a pump — so awaiting it from `runAsync` deadlocks, silently, until the whole
+file times out. Pump a placeholder, precache, then pump the real tree
+(`backdrop_framing_test.dart`). Keep the *same theme* on both pumps too: going
+from a bare `MaterialApp` to a themed one animates between them, and Material's
+own `labelLarge` carries `inherit: false`, which asserts mid-lerp.
 
 **`putAsync` doesn't complete in widget tests.** It finishes via a native
 callback the fake clock can't advance. `putEntry` uses a synchronous `put` for
@@ -326,6 +347,14 @@ whether a rebuild happened.
   `FollowUpService.toneFor` and branched on in Swift — rather than deciding
   whether there is a question at all. A journal that only speaks up when things
   are grim teaches you it is the bad-news app.
+- **The prompt's slot is measured, and floors at two lines.** A follow-up may
+  run to three (`HomePane.promptMaxLines`) — a good one often carries a clause
+  that a two-line ellipsis takes the point out of. But the pane's height
+  invariant is built on fixed slots, so the only way to let a question take a
+  third line *sometimes* is `_reservedFor` to lay the text out and ask. It never
+  returns less than the old two-line figure, so anything that fits today costs
+  the photograph nothing, and it runs once per build of the pane rather than
+  once per frame of the compose animation.
 - **A notification's text is composed when it is scheduled, never when it
   fires.** Nothing of ours runs at fire time, so both `refreshBody` and
   `refreshFollowUp` run at the end of a save. The consequence for the follow-up
@@ -335,11 +364,53 @@ whether a rebuild happened.
   auto-detected. The crisis hotline rows were removed from Settings on request;
   the "self-help companion, not a replacement for therapy" line stays, in
   Settings and in onboarding.
-- **Backdrop framing is non-destructive.** `Backdrop.fit` and `Backdrop.focusY`
-  are applied at paint time, never by re-encoding the file, so `fill` with a
-  centred focus is byte-for-byte what the picker handed over. `whole` draws the
-  photo twice — an over-scaled blurred copy behind, the whole picture in
-  front — which costs one extra blur, and only for images set that way.
+- **Backdrop framing is non-destructive.** `BackdropFraming` is a baseline
+  (`fill` → cover, `whole` → contain), a `zoom` on top of it, and a pan in
+  *pane fractions* — all applied at paint time, never by re-encoding the file,
+  so `BackdropFraming.initial` is byte-for-byte what the picker handed over.
+  The units are chosen so a stored framing needs no image dimensions to draw:
+  only `BackdropFramingView`, which has to clamp a drag against the picture's
+  own edges, resolves the photo to find out how big it is.
+  **`focusY` was the previous control and it could not work.** It set an
+  `Alignment`, which pans within an image's overflow — and covering a 9:19.5
+  pane is decided by the height, so every photo short of a 1:2.2 panorama
+  overflows sideways and not one pixel downward. The slider had nothing to
+  move. `backdrop_framing_test.dart` pins that arithmetic.
+- **The surround is a mirror, not a second copy.** When a photo doesn't reach
+  an edge, `BackdropPhoto` fills the pane with an `ImageShader` in
+  `TileMode.mirror` aligned to the *same rect* the sharp copy is drawn into, so
+  the pixel above the photo's top edge is the pixel below it and the picture
+  carries outward in its own colours. What this replaced — an over-scaled,
+  centre-cropped blurred copy — was the same photo but not the same place, so
+  the sign in the middle of the frame washed the sky above a blue wall. The
+  sharp copy's edges then taper into it over a few dozen points; underneath
+  that fade is identical content, so the seam has nothing to give it away.
+  Costs one offscreen pass, and only for photos that leave a gap.
+- **"Whole picture" is fitted to what stays sharp, not to the pane.**
+  `EdgeGlowImage` dissolves the top fifth and bottom quarter of its box, so
+  fitting a photo to the whole box and then fading a third of it away meant all
+  of the picture was there and its ends were washed out — which is not what
+  that option promises. `BackdropPhoto.sharpInsets` deflates the box it fits
+  into, and the ends that were eating the photograph hold the extended blur
+  instead. Ignored under `fill`: filling means filling.
+  The blur ramp also has to **end where the alpha ramp ends**. It used to run a
+  tenth of the pane further, which meant the top eighty-five points of a photo
+  fitted to the sharp band were still being progressively blurred — far more of
+  a picture than any taper takes.
+- **Every ramp that crosses the dissolve is a sampled smoothstep.** The alpha
+  mask, the progressive blur, both glow gradients, the taper in `BackdropPhoto`
+  and `_Scrim` in `home_pane.dart` — all of them. A corner in an alpha ramp is
+  invisible over a gradient and a hard line straight across the screen over a
+  bright sky against a near-black page. `_Scrim` was the worst of them: a
+  straight fall to nothing and then a corner where it flattened, at 30% of the
+  pane, which is exactly where the line showed up.
+- **The image's alpha mask is an ellipse, not a horizontal band.** However soft
+  a straight ramp is, it dissolves the picture along a *line*, and a line is a
+  horizon the eye locks onto. Curved, the top corners give way before the middle
+  does and there is no straight edge anywhere to find. The ellipse is 1.5× the
+  pane's width, so it's a shallow arc rather than a vignette — the picture's
+  sides stay solid through the middle of the pane. `_dissolveHold` is tuned so
+  the centre of the top edge still lands on `topBlurFadeEnd`.
 
 ---
 

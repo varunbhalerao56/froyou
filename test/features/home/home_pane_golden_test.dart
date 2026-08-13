@@ -32,6 +32,7 @@ void main() {
     required double height,
     HomeLayout layout = HomeLayout.classic,
     ImageProvider provider = const AssetImage('missing.jpg'),
+    String prompt = 'How are you feeling?',
   }) {
     final palette = AppPalette.fromSettings(
       const ThemeSettings(brightnessMode: ThemeBrightnessMode.light),
@@ -52,7 +53,13 @@ void main() {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.fromPalette(palette),
       home: MediaQuery(
-        data: const MediaQueryData(padding: EdgeInsets.only(top: topInset)),
+        // The size matters as well as the inset: the pane measures the prompt
+        // against the screen's width to decide how many lines to reserve for
+        // it, and a zero-size MediaQuery makes that question unanswerable.
+        data: const MediaQueryData(
+          size: Size(393, 852),
+          padding: EdgeInsets.only(top: topInset),
+        ),
         child: Scaffold(
           backgroundColor: palette.colors.background,
           body: HomePane(
@@ -67,9 +74,12 @@ void main() {
               next: () {},
               previous: () {},
             ),
-            prompt: 'How are you feeling?',
+            prompt: prompt,
             chromeOpacity: ValueNotifier<double>(1),
             layout: layout,
+            // The backdrop's slow scale never reaches a resting frame, and a
+            // golden is a resting frame.
+            breathe: false,
           ),
         ),
       ),
@@ -111,48 +121,49 @@ void main() {
     );
   });
 
-  testWidgets('composing: chrome gone, field centred and below the status bar', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1179, 2556);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'composing: chrome gone, field centred and below the status bar',
+    (tester) async {
+      tester.view.physicalSize = const Size(1179, 2556);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final compose = ComposeController(
-      vsync: const TestVSync(),
-      onSave: (_) async {},
-    );
-    addTearDown(compose.dispose);
-    compose.expand.value = 1;
+      final compose = ComposeController(
+        vsync: const TestVSync(),
+        onSave: (_) async {},
+      );
+      addTearDown(compose.dispose);
+      compose.expand.value = 1;
 
-    await tester.pumpWidget(frame(compose: compose, height: 852));
-    await pump(tester);
+      await tester.pumpWidget(frame(compose: compose, height: 852));
+      await pump(tester);
 
-    // Everything that competes with the text is gone.
-    expect(find.text('Be curious, not judgemental'), findsNothing);
-    expect(find.text('How are you feeling?'), findsNothing);
+      // Everything that competes with the text is gone.
+      expect(find.text('Be curious, not judgemental'), findsNothing);
+      expect(find.text('How are you feeling?'), findsNothing);
 
-    final field = find.byType(TextField);
-    expect(field, findsOneWidget);
+      final field = find.byType(TextField);
+      expect(field, findsOneWidget);
 
-    final top = tester.getTopLeft(field).dy;
-    final bottom = tester.getBottomLeft(field).dy;
+      final top = tester.getTopLeft(field).dy;
+      final bottom = tester.getBottomLeft(field).dy;
 
-    expect(top, greaterThan(topInset), reason: 'must clear the status bar');
-    // Roughly centred in the pane rather than pinned to the top — the bug was
-    // an unbounded OverflowBox leaving the centre undefined.
-    expect(
-      (top + bottom) / 2,
-      closeTo(852 / 2, 140),
-      reason: 'the field should sit near the middle of the pane',
-    );
+      expect(top, greaterThan(topInset), reason: 'must clear the status bar');
+      // Roughly centred in the pane rather than pinned to the top — the bug was
+      // an unbounded OverflowBox leaving the centre undefined.
+      expect(
+        (top + bottom) / 2,
+        closeTo(852 / 2, 140),
+        reason: 'the field should sit near the middle of the pane',
+      );
 
-    await expectLater(
-      find.byType(HomePane),
-      matchesGoldenFile('goldens/home_pane_composing.png'),
-    );
-  });
+      await expectLater(
+        find.byType(HomePane),
+        matchesGoldenFile('goldens/home_pane_composing.png'),
+      );
+    },
+  );
 
   /// The edge dissolve, against an actual photograph.
   ///
@@ -184,12 +195,7 @@ void main() {
 
     for (final layout in [HomeLayout.classic]) {
       await tester.pumpWidget(
-        frame(
-          compose: compose,
-          height: 852,
-          provider: photo,
-          layout: layout,
-        ),
+        frame(compose: compose, height: 852, provider: photo, layout: layout),
       );
       await pump(tester);
 
@@ -198,6 +204,50 @@ void main() {
         matchesGoldenFile('goldens/home_pane_photo_${layout.name}.png'),
       );
     }
+  });
+
+  testWidgets('a long follow-up takes a third line rather than an ellipsis', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1179, 2556);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final compose = ComposeController(
+      vsync: const TestVSync(),
+      onSave: (_) async {},
+    );
+    addTearDown(compose.dispose);
+
+    // Long enough to need three lines at the prompt's size, which a real
+    // generated follow-up regularly is.
+    const long =
+        'You came back to the deadline again tonight — is it the work '
+        'itself that feels heavy, or the way it keeps landing on the same '
+        'evening every week?';
+
+    await tester.pumpWidget(frame(compose: compose, height: 852));
+    await pump(tester);
+    final withShort = tester.getSize(find.byType(BackdropCarousel)).height;
+
+    await tester.pumpWidget(frame(compose: compose, height: 852, prompt: long));
+    await pump(tester);
+    final withLong = tester.getSize(find.byType(BackdropCarousel)).height;
+
+    // Three lines of it, not two and an ellipsis.
+    expect(tester.widget<Text>(find.text(long)).maxLines, 3);
+    expect(
+      tester.getSize(find.text(long)).height,
+      greaterThan(80),
+      reason: 'two lines of this style is about 59 points',
+    );
+
+    // The slot grew to hold it and the picture gave up the difference, which
+    // is the only place the room can come from — the pane owes its height
+    // whatever is in it.
+    expect(withLong, lessThan(withShort));
+    expect(tester.getSize(find.byType(HomePane)).height, 852);
   });
 
   // One per variant, at rest. The invariants asserted here are the ones every

@@ -129,10 +129,15 @@ class ProfileController extends ChangeNotifier {
 
   /// Framing is per image and non-destructive — nothing is re-encoded, so
   /// putting it back where it started restores the original exactly.
-  Future<void> setFraming(int index, {BackdropFit? fit, double? focusY}) async {
+  ///
+  /// Every call writes the whole profile to preferences, so this takes a
+  /// finished framing rather than a field at a time: the editor commits when a
+  /// gesture ends, not while a finger is moving.
+  Future<void> setFraming(int index, BackdropFraming framing) async {
     if (index < 0 || index >= _profile.backdrops.length) return;
+    if (_profile.backdrops[index].framing == framing) return;
     final updated = [..._profile.backdrops];
-    updated[index] = updated[index].copyWith(fit: fit, focusY: focusY);
+    updated[index] = updated[index].copyWith(framing: framing);
     await _writeProfile(_profile.copyWith(backdrops: updated));
   }
 
@@ -140,8 +145,9 @@ class ProfileController extends ChangeNotifier {
     if (index < 0 || index >= _profile.backdrops.length) return;
     final trimmed = caption?.trim();
     final updated = [..._profile.backdrops];
-    updated[index] = Backdrop(
-      imagePath: updated[index].imagePath,
+    // copyWith rather than a fresh Backdrop: rebuilding one from its path and
+    // its caption is how naming a picture used to silently reset how it sits.
+    updated[index] = updated[index].copyWith(
       caption: (trimmed == null || trimmed.isEmpty) ? null : trimmed,
     );
     await _writeProfile(_profile.copyWith(backdrops: updated));

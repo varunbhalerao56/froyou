@@ -1,6 +1,7 @@
-import 'dart:ui' show ImageFilter, TileMode;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:froyou/core/ui/backdrop_photo.dart';
 import 'package:froyou/core/ui/noise_overlay.dart';
 import 'package:progressive_blur/progressive_blur.dart';
 
@@ -25,14 +26,13 @@ class EdgeGlowImage extends StatelessWidget {
     this.imageHeight = 420,
     this.topGlowExtent = 50,
     this.bottomGlowExtent = 250,
-    // Roughly a fifth of the image at each end. Shorter than this and the
-    // dissolve reads as an edge you can point at rather than as the photo
-    // emerging from the page.
-    this.topBlurFadeEnd = 0.22,
-    this.bottomBlurFadeStart = 0.74,
+    this.topBlurFadeEnd = defaultTopBlurFadeEnd,
+    this.bottomBlurFadeStart = defaultBottomBlurFadeStart,
     this.blurSigma = 40.0,
     this.fit = BoxFit.cover,
-    this.focusY = 0,
+    this.zoom = 1,
+    this.offset = Offset.zero,
+    this.bleedSigma = 34,
     super.key,
   });
 
@@ -48,6 +48,25 @@ class EdgeGlowImage extends StatelessWidget {
   final double topGlowExtent;
   final double bottomGlowExtent;
 
+  /// Roughly a fifth of the image at each end. Shorter than this and the
+  /// dissolve reads as an edge you can point at rather than as the photo
+  /// emerging from the page.
+  static const double defaultTopBlurFadeEnd = 0.22;
+  static const double defaultBottomBlurFadeStart = 0.74;
+
+  /// What the two above come to: the share of the box at each end that this
+  /// widget is going to dissolve, and therefore the share a picture must not
+  /// be *fitted* into if all of it is meant to be visible.
+  ///
+  /// Public because the framing editor clamps a drag against the same
+  /// placement the painter draws, and it has to ask for the same box.
+  static const EdgeInsets defaultSharpInsets = EdgeInsets.fromLTRB(
+    0,
+    defaultTopBlurFadeEnd,
+    0,
+    1 - defaultBottomBlurFadeStart,
+  );
+
   /// End of the image's blur/fade zone at the TOP, as a fraction of height.
   final double topBlurFadeEnd;
 
@@ -59,19 +78,68 @@ class EdgeGlowImage extends StatelessWidget {
   /// device pixel ratio every frame, so fewer taps per pixel is real money.
   final double blurSigma;
 
-  /// [BoxFit.cover] crops the photo to the box. [BoxFit.contain] shows all of
-  /// it and fills what's left with an over-scaled, blurred copy of the same
-  /// picture — the fill is the photo's own colours, so the frame reads as part
-  /// of the image rather than as letterboxing.
+  /// The photo's baseline placement. [BoxFit.cover] crops it to the box;
+  /// [BoxFit.contain] shows all of it and lets [BackdropPhoto]'s extended blur
+  /// carry it out to the edges.
   final BoxFit fit;
 
-  /// Which part survives the crop, −1 (top) to 1 (bottom). Only meaningful
-  /// under [BoxFit.cover]; nothing is cropped otherwise.
-  final double focusY;
+  /// A multiple of [fit], and a pan from centred in box widths and heights.
+  /// Both come from the framing editor; see [BackdropPhoto].
+  final double zoom;
+  final Offset offset;
 
-  /// How hard the ambient fill is blurred. Enough that no detail in it
-  /// competes with the picture sitting on top.
-  static const double _fillSigma = 28;
+  /// How hard the extended surround is blurred, when there is one.
+  final double bleedSigma;
+
+  /// A smoothstep, sampled. Five stops rather than two because a straight
+  /// alpha ramp has a corner at each end, and a corner is invisible over a
+  /// gradient and a line you can point at over a bright sky.
+  static const List<double> _fadeStops = [0, 0.25, 0.5, 0.75, 1];
+  static const List<double> _fadeAlpha = [0, 0.156, 0.5, 0.844, 1];
+
+  /// How far past the pane's own width the dissolve's ellipse reaches. Larger
+  /// is flatter; at 1.5 the picture's sides stay solid through the middle of
+  /// the pane and the arc across the top is about fifty points deep.
+  static const double _dissolveSpread = 1.5;
+
+  /// Where the picture stops dissolving, as a share of the ellipse. Chosen so
+  /// the middle of the top edge lands on [topBlurFadeEnd] — the same place the
+  /// straight version put the whole edge.
+  static const double _dissolveHold = 0.55;
+
+  /// The image's own alpha: solid in the middle, gone at the top and bottom.
+  ///
+  /// An **ellipse**, not a horizontal band. A straight ramp dissolves the
+  /// picture along a line, and a line — however soft — is a horizon across the
+  /// screen that the eye locks onto. Curved, the picture's top corners give way
+  /// before its middle does and there is no straight edge anywhere to find.
+  /// The ellipse is much wider than the pane, so this is a shallow arc rather
+  /// than a vignette: the sides stay solid at mid-height.
+  Shader _dissolve(Rect rect) {
+    final centre = rect.center;
+    final radiusX = rect.width * _dissolveSpread;
+    final radiusY = rect.height / 2;
+
+    return ui.Gradient.radial(
+      centre,
+      1,
+      [
+        for (final alpha in _fadeAlpha.reversed)
+          Colors.white.withValues(alpha: alpha),
+      ],
+      [
+        for (final stop in _fadeStops)
+          _dissolveHold + stop * (1 - _dissolveHold),
+      ],
+      TileMode.clamp,
+      // Gradient space to pane space: a unit circle becomes the ellipse.
+      (Matrix4.identity()
+            ..translateByDouble(centre.dx, centre.dy, 0, 1)
+            ..scaleByDouble(radiusX, radiusY, 1, 1)
+            ..translateByDouble(-centre.dx, -centre.dy, 0, 1))
+          .storage,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -99,11 +167,22 @@ class EdgeGlowImage extends StatelessWidget {
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
+                  // Eased, like everything else that crosses this seam: the
+                  // glow is what the picture is dissolving *into*, so a corner
+                  // in its ramp shows up in exactly the band where the picture
+                  // has gone and it is the only thing left.
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [topColor, topColor, topColor.withValues(alpha: 0)],
-                    stops: const [0.0, 0.35, 1.0],
+                    colors: [
+                      topColor,
+                      for (final alpha in _fadeAlpha.reversed)
+                        topColor.withValues(alpha: alpha),
+                    ],
+                    stops: [
+                      0.0,
+                      for (final stop in _fadeStops) 0.25 + stop * 0.75,
+                    ],
                   ),
                 ),
               ),
@@ -124,11 +203,11 @@ class EdgeGlowImage extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      bottomColor.withValues(alpha: 0),
-                      bottomColor,
+                      for (final alpha in _fadeAlpha)
+                        bottomColor.withValues(alpha: alpha),
                       bottomColor,
                     ],
-                    stops: const [0.0, 0.4, 1.0],
+                    stops: [for (final stop in _fadeStops) stop * 0.75, 1.0],
                   ),
                 ),
               ),
@@ -144,31 +223,7 @@ class EdgeGlowImage extends StatelessWidget {
             child: ClipRSuperellipse(
               borderRadius: borderRadius,
               child: ShaderMask(
-                shaderCallback: (rect) {
-                  // The mid stop sits a little past halfway and holds back the
-                  // opacity, so the image eases in rather than arriving at
-                  // most of full strength in the first few pixels.
-                  return LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: const [
-                      Colors.transparent,
-                      Colors.white38,
-                      Colors.white,
-                      Colors.white,
-                      Colors.white38,
-                      Colors.transparent,
-                    ],
-                    stops: [
-                      0.0,
-                      topBlurFadeEnd * 0.55,
-                      topBlurFadeEnd,
-                      bottomBlurFadeStart,
-                      bottomBlurFadeStart + (1 - bottomBlurFadeStart) * 0.55,
-                      1.0,
-                    ],
-                  ).createShader(rect);
-                },
+                shaderCallback: _dissolve,
                 blendMode: BlendMode.dstIn,
                 child: ProgressiveBlurWidget(
                   sigma: blurSigma,
@@ -177,12 +232,28 @@ class EdgeGlowImage extends StatelessWidget {
                   // while blurSigma animates — so the blur texture is not
                   // regenerated. Don't make these depend on animated values.
                   linearGradientBlur: LinearGradientBlur(
-                    values: const [1, 0, 0, 1],
+                    // Eased for the same reason the alpha ramp is, and ending
+                    // exactly where the alpha ramp ends rather than a tenth of
+                    // the pane later. That overshoot was the real thief: it
+                    // meant the top eighty-five points of a picture fitted to
+                    // the sharp band were still being progressively blurred,
+                    // which is far more of a photograph than any taper takes.
+                    values: const [
+                      1,
+                      0.844,
+                      0.5,
+                      0.156,
+                      0,
+                      0,
+                      0.156,
+                      0.5,
+                      0.844,
+                      1,
+                    ],
                     stops: [
-                      0.0,
-                      topBlurFadeEnd + 0.1,
-                      bottomBlurFadeStart - 0.15,
-                      1.0,
+                      for (final stop in _fadeStops) stop * topBlurFadeEnd,
+                      for (final stop in _fadeStops)
+                        bottomBlurFadeStart + stop * (1 - bottomBlurFadeStart),
                     ],
                     start: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -192,13 +263,22 @@ class EdgeGlowImage extends StatelessWidget {
                           topColor: topColor,
                           bottomColor: bottomColor,
                         )
-                      : _Photo(
+                      : BackdropPhoto(
                           image: image!,
                           fit: fit,
-                          focusY: focusY,
-                          fillSigma: _fillSigma,
-                          topColor: topColor,
-                          bottomColor: bottomColor,
+                          zoom: zoom,
+                          offset: offset,
+                          bleedSigma: bleedSigma,
+                          sharpInsets: EdgeInsets.fromLTRB(
+                            0,
+                            topBlurFadeEnd,
+                            0,
+                            1 - bottomBlurFadeStart,
+                          ),
+                          fallback: _MissingBackdrop(
+                            topColor: topColor,
+                            bottomColor: bottomColor,
+                          ),
                         ),
                 ),
               ),
@@ -211,70 +291,6 @@ class EdgeGlowImage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// The photo, framed.
-///
-/// Under [BoxFit.cover] this is one draw, exactly as it always was. Under
-/// [BoxFit.contain] it is two: the same decoded bitmap over-scaled and blurred
-/// behind, and the whole picture in front. The fill costs a second draw of a
-/// texture that is already in memory plus one blur — and only for images the
-/// user has actually asked to frame this way.
-class _Photo extends StatelessWidget {
-  const _Photo({
-    required this.image,
-    required this.fit,
-    required this.focusY,
-    required this.fillSigma,
-    required this.topColor,
-    required this.bottomColor,
-  });
-
-  final ImageProvider image;
-  final BoxFit fit;
-  final double focusY;
-  final double fillSigma;
-  final Color topColor;
-  final Color bottomColor;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget draw(BoxFit boxFit, Alignment alignment) => Image(
-      image: image,
-      fit: boxFit,
-      alignment: alignment,
-      // Without this, swapping the backdrop in Settings shows a blank frame
-      // while the new provider decodes.
-      gaplessPlayback: true,
-      errorBuilder: (context, error, stackTrace) =>
-          _MissingBackdrop(topColor: topColor, bottomColor: bottomColor),
-    );
-
-    if (fit != BoxFit.contain) {
-      return draw(BoxFit.cover, Alignment(0, focusY.clamp(-1.0, 1.0)));
-    }
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Blurred first, then over-scaled: blurring pulls the edges of the
-        // sampled area inward, and at this radius that would otherwise show as
-        // a soft border around the fill.
-        Transform.scale(
-          scale: 1.15,
-          child: ImageFiltered(
-            imageFilter: ImageFilter.blur(
-              sigmaX: fillSigma,
-              sigmaY: fillSigma,
-              tileMode: TileMode.decal,
-            ),
-            child: draw(BoxFit.cover, Alignment.center),
-          ),
-        ),
-        draw(BoxFit.contain, Alignment.center),
-      ],
     );
   }
 }

@@ -76,14 +76,6 @@ flutter analyze
 flutter test
 ```
 
-Host tests load `libobjectbox.dylib` from a symlink at the repo root that points
-into the ObjectBox pod, so run `pod install` first. If it goes missing:
-
-```bash
-ln -sfn ios/Pods/ObjectBox/ObjectBox.xcframework/macos-arm64_x86_64/ObjectBox.framework/Versions/A/ObjectBox \
-  libobjectbox.dylib
-```
-
 ## More
 
 - Submission write-up: [`docs/devpost-submission.md`](docs/devpost-submission.md)

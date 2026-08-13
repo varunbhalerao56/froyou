@@ -47,9 +47,11 @@ class SettingsView extends HookWidget {
             ),
             _Section(
               title: 'Your images',
+              // The framing editor is behind a tap on the picture and there is
+              // nothing else to suggest it, so the subtitle has to say so.
               subtitle:
-                  'They drift and fade on the home screen. Captions are '
-                  'optional.',
+                  'They drift and fade on the home screen. Tap one to zoom and '
+                  'move it. Captions are optional.',
               colors: colors,
               child: BackdropManager(profile: profile),
             ),
