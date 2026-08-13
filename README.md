@@ -1,4 +1,4 @@
-# Froyou (v1.0.0+1)
+# Froyou (v1.0.2+3)
 
 Talk or type a log. Froyou notices what you keep coming back to.
 
@@ -62,24 +62,12 @@ flutter build ipa --export-method development
 flutter build ios --release --no-codesign
 ```
 
-To package the unsigned build as an IPA:
-
-```bash
-cd build/ios/iphoneos && mkdir -p Payload && cp -R Runner.app Payload/ \
-  && zip -qr ../../../froyou-unsigned.ipa Payload && rm -rf Payload && cd ../../..
-```
-
 ## Tests
 
 ```bash
 flutter analyze
 flutter test
 ```
-
-## More
-
-- Submission write-up: [`docs/devpost-submission.md`](docs/devpost-submission.md)
-- Architecture and implementation notes: [`CLAUDE.md`](CLAUDE.md)
 
 ## License
 
