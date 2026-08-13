@@ -2,7 +2,7 @@ name: froyou
 description: "Froyou"
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.12.2
@@ -78,10 +78,11 @@ objectbox:
   output_dir: generated
 
 # The app icon has no config here on purpose: it is rendered from
-# assets/brand/app-icon.svg by ./tool/render_icon.sh, which owns all fifteen
-# PNGs in AppIcon.appiconset. flutter_launcher_icons was dropped along with the
-# dead block that used to sit here — it only ever resampled a source PNG, and
-# there isn't one.
+# assets/brand/froyou.png by ./tool/render_icon.sh, which owns all fifteen PNGs
+# in AppIcon.appiconset. Editing those by hand is pointless — the next run
+# overwrites them. flutter_launcher_icons stays dropped: the script resamples
+# every size straight from the 2000px master with Lanczos and strips the alpha
+# channel, which the App Store requires to be absent rather than merely opaque.
 
 # The launch screen. Regenerate with ./tool/render_splash.sh — running
 # `flutter_native_splash:create` on its own leaves the three LaunchImage PNGs
@@ -90,11 +91,13 @@ objectbox:
 # The colours are the Paper preset's surfaces, which is what the app boots into:
 # it starts neutral and follows the system, so these are the exact pixels the
 # first Flutter frame paints and the handover is invisible. If Paper's surfaces
-# move in theme_presets.dart, move them here too.
+# move in theme_presets.dart, move them here too. Deliberately *not* the icon's
+# pink: a pink launch screen would snap to cream on every cold start.
 #
-# One image serves both brightnesses. The mark is a pale bezel around a magenta
-# field — it reads on either surface, and a second asset would be two things to
-# keep in step with the icon instead of one.
+# One image serves both brightnesses. The mark is the froyou wordmark in
+# #F3A8FF, set from SF Pro Rounded Bold rather than cut out of the icon art —
+# it separates from both surfaces by hue, and a second asset would be two
+# things to keep in step instead of one.
 flutter_native_splash:
   color: "#F2EFE9"
   color_dark: "#16181D"

@@ -128,6 +128,29 @@ class ThemePresets {
     darkSurface: Color(0xFF181A13),
   );
 
+  /// The app's own colours, taken from the icon.
+  ///
+  /// [darkAccent] is the wordmark's ink exactly — `#F3A8FF`, sampled from the
+  /// densest glyph pixels in `assets/brand/froyou.png`. It survives dark mode
+  /// unchanged because it is already light enough to clear 4.5:1 on a near-black
+  /// surface, so nothing has to correct it and it keeps all of its saturation.
+  ///
+  /// [lightAccent] cannot be that colour. At 83% lightness the wordmark pink is
+  /// invisible on paper, and correcting it *down* far enough to read would land
+  /// somewhere it was never authored to be. So light mode names its own end of
+  /// the same hue — see the note on per-brightness accents in [ThemePreset].
+  ///
+  /// The hue sits around 295°, which is far enough from [dusk]'s 250° to be a
+  /// different theme rather than a warmer version of that one.
+  static const ThemePreset orchid = ThemePreset(
+    id: 'orchid',
+    name: 'Orchid',
+    lightAccent: Color(0xFF9A3CAD),
+    darkAccent: Color(0xFFF3A8FF),
+    lightSurface: Color(0xFFF7DFFA),
+    darkSurface: Color(0xFF1E1524),
+  );
+
   static const List<ThemePreset> all = [
     paper,
     sand,
@@ -136,6 +159,7 @@ class ThemePresets {
     dusk,
     clay,
     moss,
+    orchid,
   ];
 
   static const ThemePreset fallback = paper;

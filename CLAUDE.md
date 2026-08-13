@@ -23,8 +23,8 @@ flutter test                                 # ~210 tests, ~3.5min — scope it
 flutter test test/features/journal/          # run only what you changed
 flutter test --update-goldens                # after any deliberate visual change
 
-./tool/render_icon.sh                        # app icon    ← assets/brand/app-icon.svg
-./tool/render_splash.sh                      # launch screen ← splash-mark.svg
+./tool/render_icon.sh                        # app icon    ← assets/brand/froyou.png
+./tool/render_splash.sh                      # launch screen ← SF Pro Rounded Bold
 ./tool/fetch_illustrations.sh --preview      # intro art   ← unDraw, then look at it
 ```
 
@@ -78,35 +78,43 @@ lib/
     analytics/              AnalyticsService + view
     debug/                  seed data, debug menu, channel test, layout gallery
   services/                 speech_service, nlp_service, genai_service, db_service
-assets/brand/               app-icon.svg, splash-mark.svg — both in vector
+assets/brand/               froyou.png — the wordmark art the icon is cut from
 assets/illustrations/       the intro's four drawings, tokenized (see README)
 tool/                       render_icon.sh, render_splash.sh,
                             fetch_illustrations.sh, svg2png.swift
 ios/Runner/                 SpeechChannel, NlpChannel, GenAiChannel (+ support)
 ```
 
-**The app icon is generated, not drawn.** `assets/brand/app-icon.svg` is the
-source; `./tool/render_icon.sh` rasterizes it and overwrites all fifteen PNGs in
-`AppIcon.appiconset`. Don't edit those by hand — the next run will silently
-undo it. Only the 1024 comes from vector and the rest are Lanczos downsamples
-of it, because re-rendering the SVG at 40px puts the bezel highlight and the
-turbulence field below a pixel each and simply drops them.
+**The app icon is generated, not drawn.** `assets/brand/froyou.png` — the
+wordmark on its pink gradient, 2000px — is the source; `./tool/render_icon.sh`
+resamples it and overwrites all fifteen PNGs in `AppIcon.appiconset`. Don't edit
+those by hand, the next run will silently undo it. Every size comes straight
+from the 2000 rather than chaining through the 1024: resampling once from the
+largest original beats resampling twice, and unlike the vector mark this
+replaced, there is no size at which re-rendering from source would be better.
+The script also strips the alpha channel, which the App Store requires to be
+*absent* rather than merely opaque.
 
-It is a porthole onto the app's own backdrop, and the field behind the glass
-dissolves on `EdgeGlowImage`'s real stops rather than on something eyeballed to
-look similar — if those numbers change, the icon is meant to change with them.
-`xcrun actool --compile` is the cheap way to check the catalog still builds
-without waiting on a full `flutter build ios`.
+A six-letter wordmark has a floor: at 20pt@2x that is 40px for `froyou`, about
+six pixels a letter, and it reads as texture rather than a word. That is the
+design's own trade, not a resampling artefact. `xcrun actool --compile` is the
+cheap way to check the catalog still builds without waiting on a full
+`flutter build ios`.
 
-**The launch screen is the same mark with the room taken away.**
-`assets/brand/splash-mark.svg` is app-icon.svg minus its ground and grain, at
-identical coordinates, and `./tool/render_splash.sh` is the only supported way
-to regenerate it — see the note under "Things that will bite you" about running
-`flutter_native_splash:create` on its own. The background is the Paper preset's
-surface at both brightnesses, which is what the app boots into, so the handover
-from storyboard to first Flutter frame has nothing to give it away. `main.dart`
-defers that first frame until `runApp`, in a `finally` so a failed boot still
-gets its error screen.
+**The launch screen is the wordmark alone, on the surface the app boots into.**
+`./tool/render_splash.sh` is the only supported way to regenerate it — see the
+note under "Things that will bite you" about running `flutter_native_splash:create`
+on its own. The mark is **set from `fonts/SF-Pro-Rounded-Bold.otf` at render
+time**, not cut out of the icon art: the artwork is pink-on-pink with no clean
+edge to key against, so extraction would drag a halo with it. Bold is the right
+face because the artwork's ink box measures aspect 3.246 and Bold sets 3.234,
+where no other weight clears 3.14.
+
+The background is the Paper preset's surface at both brightnesses, **not the
+icon's pink** — those are the exact pixels the first Flutter frame paints, so
+the handover has nothing to give it away, and a pink launch screen would snap
+to cream on every cold start. `main.dart` defers that first frame until
+`runApp`, in a `finally` so a failed boot still gets its error screen.
 
 **State:** `flutter_hooks` + `ChangeNotifier` behind `AppScope`.
 
