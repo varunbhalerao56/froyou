@@ -58,12 +58,16 @@ class _FroyouRootState extends State<FroyouRoot> with WidgetsBindingObserver {
       store: widget.store,
       db: widget.db.journalEntryDb,
     );
+    final followUp = FollowUpService(
+      store: widget.store,
+      db: widget.db.journalEntryDb,
+    );
+    // Handed over rather than passed in: the reminder service is built first,
+    // because the journal controller takes its enrichment hook.
+    _reminders.followUp = followUp;
     _journal = JournalController(
       widget.db.journalEntryDb,
-      followUp: FollowUpService(
-        store: widget.store,
-        db: widget.db.journalEntryDb,
-      ),
+      followUp: followUp,
       // Recomputes the reminder's line from the theme labels a save just
       // produced. Baked in now because iOS background execution isn't
       // dependable enough to compose it when the notification fires.

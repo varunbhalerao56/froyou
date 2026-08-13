@@ -77,8 +77,7 @@ Two things followed from that:
 **It had to be simple to the point of being boring.** Every journalling app I
 tried wanted me to pick a mood emoji, choose a prompt, tag the entry, rate my
 sleep. When you're already stuck in a loop, a form is another loop. Froyou has
-one text field and a microphone button. The organizing happens afterwards,
-without me.
+one text field and a microphone button.
 
 **It had to check on me.** Not a generic 9 p.m. "time to journal!" push — a
 question that knows what yesterday was like. If yesterday averaged out rough,
@@ -103,10 +102,6 @@ each word fading in as it lands and quietly revising itself when the recognizer
 changes its mind. Or just type. The compose view clears the whole screen so
 there's nothing but the words.
 
-**It reads the entry and forgets you.** Saving is instant. Everything derived —
-sentiment, embeddings, clustering, naming — happens afterwards, unawaited, and
-none of it can cost you the words you just said.
-
 **It finds the loops.** Every sentence becomes a 512-dimensional
 `NLContextualEmbedding` vector, stored in ObjectBox. Those vectors are grouped
 by centred cosine similarity against a threshold the app derives from your own
@@ -129,13 +124,18 @@ an otherwise fine day — always on the day's average. It clears when you log.
 When the model isn't available, no question appears at all; there is no
 statistical fallback for warmth, and a canned one would be worse than silence.
 
+The same question can also come to you. **Morning follow-up** is a second
+notification with its own time — 9:00 AM by default, against the evening nudge's
+9:00 PM — carrying the question itself as the notification body, so a hard day
+gets answered the next morning whether or not you think to open the app. It has
+its own notification id so the two schedule and cancel independently, but it
+rides on reminders being on: one permission, one thing you think of as
+"notifications". Unlike the nightly nudge it does **not** repeat — it's about
+one particular day, so it fires once and the next save arms the next one.
+
 **It stays yours.** Airplane mode changes nothing. There is no account, no sync,
 no telemetry, and no network code to audit — the promise is structural, not a
 setting.
-
-**Safety framing is load-bearing.** Crisis resources are one tap from Settings.
-Cognitive distortions are self-tagged, never auto-detected — a statistical model
-telling someone they're catastrophizing is not a thing this app will ever do.
 
 ---
 
@@ -234,9 +234,6 @@ Here is the entire release build, measured (`flutter build ios --release`):
 | **Total `.app`** | **48.3 MB** | |
 | **Model weights** | **0 bytes** | |
 
-Reproduce it: `find build/ios/iphoneos/Runner.app -name "*.mlmodelc" -o -name
-"*.onnx" -o -name "*.tflite"` returns nothing.
-
 **The largest single asset in this AI app is the typeface.** The four SF Pro
 Rounded weights outweigh the Flutter engine, the Dart snapshot, the vector
 database and the Swift channels *combined* — and every model in the product is
@@ -257,101 +254,80 @@ The trade is real and stated plainly below: you get Apple's model or none.
 
 ### Model quality — the anisotropy fix
 
-**This is the headline, and it's the one that made the app work.**
+**The fix that made clustering work at all.**
 
-The naive design is: embed each sentence, cosine-compare it to each theme
-centroid, join above a threshold. This does not work, and the failure is
-instructive.
+An embedding turns a sentence into 512 numbers — effectively a *direction* in
+space. Two sentences about the same thing should point the same way, and cosine
+similarity measures the angle between them: 1.0 is identical, 0 is unrelated. So
+the obvious design is: embed each sentence, compare it to each theme, join
+anything above some threshold.
 
-Mean-pooled contextual embeddings are **anisotropic** — they occupy a narrow
-cone rather than the whole sphere, sharing one large common direction. Measured
-on a real device with real journal entries, three sentences about *cooking*, *an
-audiobook*, and *a relationship* scored **0.86, 0.91 and 0.94** against the same
-cluster. That's a spread of **0.076 across topics with nothing whatsoever in
-common** — and everything sits above 0.85. There is no threshold you can put
-inside that band. Set it low and every theme merges into one; set it high and
-nothing ever joins anything.
+It doesn't work, because of a property called **anisotropy** — the vectors don't
+use the whole space. They're crammed into a narrow cone, all pointing roughly
+the same way *before* you consider what they actually say. Picture a crowd where
+everyone happens to be facing north: watching which way people face tells you
+nothing about who's talking to whom.
 
-The first casualty of this is the obvious optimization. ObjectBox stores the
-vectors behind an HNSW index, and the fast path — `nearestNeighborsF32` — is
-right there. **It is not used, and cannot be**: the index can only rank *raw*
-vectors, and raw vectors are precisely the thing that carries no signal. The
-approximate-nearest-neighbour structure everyone reaches for first is the one
-piece of machinery this problem rules out.
+Measured on a real device, sentences about *cooking*, *an audiobook* and *a
+relationship* scored **0.86, 0.91 and 0.94** against the same theme. Three
+topics with nothing in common, sitting in a band **0.076 wide**, all above 0.85.
+No threshold fits in there. Put it low and everything collapses into one theme;
+put it high and nothing ever joins anything.
 
-You cannot fix anisotropy in the model either. You don't own the model. So it's
-fixed in the pipeline.
+That also rules out the obvious optimization. ObjectBox stores these vectors
+behind an HNSW index and the fast path, `nearestNeighborsF32`, is right there —
+but it can only rank *raw* vectors, which are exactly the ones carrying no
+signal. The first tool everyone reaches for is the one this problem forbids.
 
-**Centring is the fix.** Subtract the mean of every stored embedding, then
-renormalize. What's left is the part that is actually about cooking or a
-deadline. The same device data then reads: unrelated pairs at a median of
-**−0.036**, related pairs out at **p99 0.513**. That is a usable signal, from a
-0.076-wide band that had none.
+**Centring is the fix.** Work out the average direction of every stored
+embedding — the "north" they're all facing — subtract it from each one, and
+rescale. What's left is only the part that makes a sentence *different* from
+every other sentence: the bit genuinely about cooking, or a deadline.
 
-**The threshold is measured, not chosen — and three plausible choices all failed
-first.** Each is recorded because each looked right:
+The same device data then reads: unrelated pairs at a median of **−0.036**,
+related pairs out at **p99 0.513**. A real signal, out of a band that had none.
+
+**Then the threshold ate three more attempts.** Centring gives you signal; it
+doesn't tell you where to cut. Each of these looked right:
 
 | Value | Where it came from | How it failed |
 |---|---|---|
-| **0.55** | the synthetic seed, where same-topic vectors share an axis and score 0.88 | 26 sentences → **25 themes** |
-| **4/√512 ≈ 0.177** | the noise floor — four sigma past chance, and mathematically defensible | sat **below the user's p90**; put an audiobook in with work |
-| **p90** | "the top tenth of pairs are related" | the seed's is a *fifth* — broke the seed |
+| **0.55** | the synthetic seed, where same-topic vectors score 0.88 | 26 sentences → **25 themes** |
+| **4/√512 ≈ 0.177** | the noise floor — four sigma past chance, mathematically defensible | sat **below the real user's p90**; filed an audiobook under work |
+| **p90** | "the top tenth of pairs are related" | the seed's share is a *fifth* — broke the seed |
 
-The 4σ noise floor is the instructive failure: it is the answer the geometry
-suggests, it is provably beyond chance, and it is still wrong, because "beyond
+The noise floor is the instructive failure: it's the answer the mathematics
+hands you, it's provably beyond chance, and it's still wrong — because "beyond
 chance" and "about the same subject" are not the same question.
 
-**What works is Otsu's method** — the thresholding algorithm from image
-binarization, run over the pairwise similarity distribution. Those scores are
-two overlapping piles: near-zero for sentences that merely share a language,
-higher for ones that share a subject. Otsu finds the valley between them by
-maximising between-group variance, and it assumes nothing about where the cut
-sits or how many pairs fall either side — which is exactly why it survives both
-a real journal and a synthetic seed whose distributions have different shapes.
-On the seed it picks **0.333**, captures exactly the **13 same-topic pairs out
-of 66**, and rebuilds exactly the **4 seeded topics**. The 4σ noise floor stays
-in the code as a *floor* only, so a genuinely varied journal still cannot
-collapse into one theme.
+**What works is Otsu's method**, borrowed from image scanning, where it decides
+which greys are ink and which are paper. Plot every pairwise similarity and you
+get two humps: a big one near zero for sentences that merely share a language,
+a smaller one further right for sentences that share a subject. Otsu finds the
+dip between them — and assumes nothing about where that dip sits or how big
+either hump is, which is why it survives both a real journal and a synthetic
+seed whose distributions look nothing alike. On the seed it picks **0.333**,
+catches exactly the **13 same-topic pairs out of 66**, and rebuilds exactly the
+**4 seeded topics**. The 4σ noise floor stays in the code as a *floor* only, so
+a genuinely varied journal still can't collapse into one theme.
 
-That is a model-quality improvement for a fixed model size — arrived at from the
-only direction available when the weights aren't yours.
-
-**Incremental assignment cannot stand alone.** Two problems compound: the mean
-is only estimable once there is text, so the earliest sentences are placed with
-the measure that doesn't work and nothing revisits them; and a centroid drifts
-as it absorbs members, so what a cluster accepts depends on arrival order. A
-theme that has swallowed everything becomes a magnet and never comes apart.
+**Grouping is redone from scratch, not patched.** The average direction can only
+be estimated once there's text, so the earliest sentences were placed using the
+measure that doesn't work and nothing revisits them. Worse, a theme drifts as it
+absorbs sentences, so what it accepts depends on what arrived first — and a
+theme that has swallowed everything becomes a magnet that never comes apart.
 `reclusterAll` regroups every sentence from scratch, oldest first.
 
-**But not on every save** — and this is where the correctness fix had to be
-paid for. `maybeRecluster` rebuilds once per launch, then only when the corpus
-has grown by half again, or when the mean has actually drifted
-(`_meanStability`). The mean converges quickly, and a full rebuild only earns
-its cost when the thing every comparison is *relative to* has moved.
+**But not on every save.** `maybeRecluster` rebuilds once per launch, then only
+when the corpus has grown by half again or the average has actually moved
+(`_meanStability`). A full rebuild only earns its cost when the thing every
+comparison is *relative to* has shifted.
 
-**The corpus mean comes from the clusters, not the sentences.** This was the
-single most expensive thing in the pipeline before it was fixed. Centring needs
-the mean of every clustered sentence, and computing it directly means loading
-thousands of sentences and their 512-float embeddings on every save. Instead
-each cluster carries a `sumVector`, so summing *tens of clusters* gives exactly
-the same mean — not an approximation of it — for a fraction of the I/O.
-
-Two supporting decisions:
-
-- **Sentences are embedded independently**, never as one paragraph.
-  `NLContextualEmbedding` is contextual, so embedding a paragraph in one pass
-  makes the same sentence produce different vectors depending on its neighbours
-  — which silently poisons cross-entry similarity. Isolating each sentence keeps
-  sentence → vector a pure function.
-- **Vectors are normalized at the source** (`normalize: true` on the native
-  side). This isn't cosmetic: the centroid is a running raw sum, so
-  unnormalized vectors would let long sentences dominate it. It also means the
-  stored dot product *is* the cosine — no magnitudes computed at query time.
-
-All of it is inspectable at runtime. `[Cluster]` in the console prints the
-per-sentence decision, the pairwise distribution with the chosen threshold and
-**which rule set it**, and whether a rebuild happened. A clustering system whose
-threshold moves per corpus is untunable without that line.
+**And that average comes from the themes, not the sentences** — the single most
+expensive thing in the pipeline before it was fixed. Computing it directly means
+loading thousands of sentences and their 512 floats each, on every save. Instead
+each theme carries a running `sumVector`, so adding up *tens of themes* gives
+exactly the same answer — not an approximation — for a fraction of the I/O.
 
 ### Model speed, latency and energy
 
@@ -366,7 +342,11 @@ clustering and naming run unawaited afterwards with a 30-second budget. Time to
 - `embedSentences` splits *and* embeds natively in **one channel crossing
   instead of N+1**, and detects the language once over the whole text rather
   than per sentence — detection on a single short sentence is unreliable, so
-  this is a quality win as well as a latency one.
+  this is a quality win as well as a latency one. Each sentence is still
+  embedded *separately* inside that one call: the model is contextual, so
+  embedding a paragraph in one pass would make the same sentence produce
+  different vectors depending on its neighbours, quietly poisoning every
+  cross-entry comparison.
 - Mean-pooling happens **in Swift**, over the raw result. The channel carries
   512 doubles per sentence, not `tokens × 512`.
 - **All clusters are named in a single generation request**, never one per
@@ -391,63 +371,6 @@ missing every call fails while the model is still advertised as present.
 asking for the rest of the session. Without it, a device in that state pays a
 full failed inference on every single save, forever.
 
-**The largest energy win in the app had nothing to do with AI.** Home used to
-have a slow Ken Burns drift on the backdrop — a transform above a
-`RepaintBoundary`, which should be compositor-only and free. It was the single
-most expensive thing in the app. A raster cache will not hold a layer whose
-transform changes every frame, so the entire `EdgeGlowImage` — **two-pass
-Gaussian included — was re-rendered at full DPR on every frame Home was
-idle**, and the photo was resampled each frame, which read as shimmer on fine
-detail. Deleting the drift made idle Home actually idle. The lesson generalized
-into a rule the codebase now follows: *animate a cached subtree, don't repaint
-one.* `LivingBackdrop` paints each blob behind its own boundary and hands it to
-`AnimatedBuilder` as `child`, so a frame costs three transform matrices instead
-of three full-screen gradient fills. The blur shader is compiled at boot rather
-than on first frame, so Home never renders unblurred and snaps.
-
-### Developer experience
-
-- **190 tests across 21 files**, including golden tests for every one of the
-  five Home layouts in both brightnesses.
-- **A channel test harness that ships in release.** Long-press the version
-  label → `ChannelTestView` drives `app/speech`, `app/nlp` and `app/genai`
-  directly on a physical device. When on-device output looks wrong, this is what
-  tells you whether the problem is the channel or the app — and it has to ship in
-  release because the model is only real on a signed build on real hardware.
-- **`--dart-define=SEED_DEMO=true`** seeds 12 believable clustered logs, because
-  clustering has nothing to say until there are a few dozen sentences and typing
-  those by hand to demo the app is not a good use of anyone's time.
-- **One boot line that answers the only question that matters:**
-  `[boot] genai available=true`. Whether a theme was named by the language model
-  or the statistical fallback is invisible from the UI by design, which makes
-  "the labels look worse than I remember" undiagnosable without it.
-- **A contrast test that walks every preset × brightness × tint combination**
-  and asserts body text clears 4.5:1. No colour in this codebase is derived by
-  hand.
-- **The app icon is generated from vector, not drawn.** `assets/brand/app-icon.svg`
-  → `./tool/render_icon.sh` → all fifteen PNGs. Only the 1024 comes from vector;
-  the rest are Lanczos downsamples, because re-rendering the SVG at 40 px puts
-  the bezel highlight and the turbulence field below a pixel each and simply
-  drops them.
-
-### Arm-specific
-
-Every inference in Froyou runs on Apple silicon — an Arm CPU with an Arm-designed
-Neural Engine — through Apple's own frameworks, which means it is scheduled onto
-the ANE and the performance cores by code that knows the hardware better than we
-ever could. The Arm-specific optimization work here is **not writing kernels; it
-is arranging the app so Apple's kernels are used well**: batching to reduce
-crossings into them, caching model instances so they aren't reloaded, keeping
-every unit of work off the platform thread, latching off inference that is going
-to fail, and eliminating the GPU work that was quietly costing more than all the
-inference combined.
-
-The GPU side is Arm-specific in a way that's easy to miss: Apple's GPU is
-tile-based deferred, and the raster-cache behaviour that made the Ken Burns
-regression so expensive is a direct consequence of that architecture. The fix —
-hold the expensive layer still, animate the cheap transform above it — is a
-tile-based-renderer optimization, not a general one.
-
 ---
 
 ## Platform limitations we had to design around
@@ -463,45 +386,33 @@ demand *different product responses*, so they're distinct values in a Dart enum:
 `appleIntelligenceNotEnabled` is a setting they control; `modelNotReady` is
 temporary and worth retrying.
 
-**`.available` is necessary but not sufficient.** In the Simulator the model
-reports itself available and generation still fails —
-`SensitiveContentAnalysisML Code=15 → ModelManagerError 1026`, Apple's safety
-classifier, which isn't provisioned there. **Real model output can only be
-verified on a physical A17 Pro or newer device.** That single fact shapes the
-whole test strategy: everything on the model path needs a mock, and the channel
-harness has to ship in release.
-
-**You cannot fine-tune, quantize, or swap.** No LoRA, no distillation, no
-INT4, no measuring tokens/sec against an alternative. The entire lever is what
-you do around the model — which is precisely why the anisotropy fix exists.
-
 **`NLContextualEmbedding` downloads its assets on first use, per language.**
 The first save on a fresh device can be slow, and on a device that never
 completes the download the app must still work. It does: sentiment and keywords
 run independently of the embedding pass, sentences are stored unclustered, and
 themes simply don't form.
 
+**A notification's text has to exist before the moment it's about.** iOS wants
+the body at *scheduling* time, and nothing of ours runs when the notification
+actually fires — there is no hook to generate a line at 9 AM. So the morning
+question cannot be written in the morning. It's composed at the end of a save,
+in the same place and for exactly the same reason the nightly reminder line
+already was: that's the only moment the day's mood and themes are known and the
+model is warm.
+
+Two consequences fall out of that, and both are visible behaviour rather than
+implementation trivia:
+
+- **The armed question is about the day your last log belongs to.** Write again
+  later that day and it's rewritten against the fuller picture. The notification
+  you'd have received at lunchtime is not the one that arrives.
+- **No logs, no sentiment, or the model declining ⇒ nothing is sent.** Not a
+  generic nudge in the question's place. A warm open question about a day you
+  didn't have is worse than silence, and this is the one path in the app with no
+  statistical floor underneath it on purpose.
+
 **The models are iOS-only by construction.** There is no portable equivalent of
 this app, and that's a deliberate trade, not an oversight.
-
-**So every model path in Froyou has a floor:**
-
-| Model path | Falls back to |
-|---|---|
-| Theme names (`SystemLanguageModel`) | class-based TF-IDF (`ClusterLabeler`) |
-| Entry keywords (`SystemLanguageModel`) | frequency + phrase bonus |
-| Speech transcription | typing |
-| Embeddings / clustering | entry saved unclustered; sentiment still runs |
-| Follow-up question | **nothing** — no question appears, on purpose |
-
-The statistical floor isn't a stub. `ClusterLabeler` uses **class-based TF-IDF**,
-the scoring BERTopic introduced for exactly this job: collapse each cluster into
-one document, weight each term by how much it distinguishes that cluster from
-the others. Plain within-cluster frequency cannot do this — if you journal about
-work every day, "work" is the most frequent word in the sleep cluster and the
-family cluster too, and every theme ends up named after it. It scores adjacent
-word pairs alongside single words with a phrase bonus, because "deadline moved"
-says something that "deadline" and "moved" ranked separately do not.
 
 ---
 
@@ -522,12 +433,6 @@ anisotropic, the centring step keeps working and the clusters get cleaner. When
 Apple Intelligence reaches more devices, more users cross from the statistical
 tier into the model tier — silently, because the app was built expecting that
 crossing to happen in both directions.
-
-And it compounds with the Arm story specifically. Apple ships a new Neural
-Engine roughly annually. An app that owns its model gets that speedup only for
-whatever its own runtime can exploit. An app that calls the system model gets it
-in full, because Apple reschedules its own inference onto the new hardware as a
-matter of course.
 
 The right way to state the trade: **we gave up control of the model to get
 compounding returns on it.** For a journal that has to be free, private, small,
@@ -557,6 +462,36 @@ on both. That sequence — three defensible constants, all wrong, replaced by on
 algorithm that reads the data — is the piece of work most worth stealing from
 this repo.
 
+**And then, with the groups finally correct, the names were still wrong.** The
+original design had no language model in it at all. Contextual embeddings found
+the clusters; statistics named them — c-TF-IDF across clusters for theme labels,
+frequency-plus-phrase-bonus for the words under a log card. It is a genuinely
+good algorithm and it produced genuinely useless names, for a reason that is
+obvious in hindsight and was invisible while building it: **a statistical
+extractor can only ever return terms that literally appear in the text.**
+
+That is precisely the thing this app exists to defeat. The embedding is what
+notices that "my manager pushed the date again" and "the timeline slipped"
+belong together — different words, one worry. Then the labeler is handed that
+correct group and, having only those sentences' own vocabulary to draw on, picks
+whichever term happens to be most distinctive and calls the theme *"pushed"* or
+*"timeline."* The grouping had solved the synonym problem and the naming
+immediately reintroduced it. Every theme name read like a search result for
+something you didn't search for.
+
+So the naming layer was rewritten model-first: `SystemLanguageModel` gets the
+cluster's most central sentences and writes a name that need not contain any
+word from any of them. The statistics stayed as the floor rather than being
+deleted — but the pivot went far enough that there is now a `kModelOnlyLabels`
+switch, **currently on**, which turns every statistical fallback off entirely
+so that a blank keyword line means *the model declined* rather than the
+statistics quietly filling in. The fallback being invisible from the UI is
+normally the point; while judging naming quality it's the problem.
+
+The general shape: **embeddings tell you what belongs together, and are the
+wrong tool for saying what it is.** Those are two different jobs and we spent a
+while trying to do both with one.
+
 **A model that reports itself available and then fails every call.** Debugging
 the Simulator's `SensitiveContentAnalysisML` failure cost real time, and the
 lesson — availability is not a promise about generation — is now encoded as the
@@ -582,12 +517,6 @@ This once turned an 80-second suite into twenty minutes. The speech version is
 nastier — recording *looks* like it started, and Stop silently does nothing.
 Both now have first-class mocks and both are documented as landmines.
 
-**Writing an app about anxiety without being annoying about it.** Every check-in
-rule in `FollowUpService` is a restraint: only the day after, never in the
-moment. Only on the day's average, never on one low entry. Cleared the moment
-you log. No question at all rather than a canned one. The hard part of this
-product was deciding what it should *not* do.
-
 ---
 
 ## Accomplishments we're proud of
@@ -606,11 +535,6 @@ problem, probably without knowing it.
 
 **Total offline operation as a structural property.** Not a toggle, not a
 promise — there is no network code to audit. Airplane mode changes nothing.
-
-**Three graceful-degradation tiers that are invisible from the UI.** The same
-build is coherent on an A17 Pro with Apple Intelligence on, on an older iOS 26
-device, and in a Simulator where generation is impossible. You cannot tell from
-looking which tier you're in — only the boot log knows.
 
 **An interface you're glad to open.** Your own photos, blurred and glowing at
 the edges so they dissolve into the page; a caption you wrote; SF Pro Rounded
@@ -642,21 +566,18 @@ number at all and letting an algorithm read the valley out of the data on every
 pass. If a constant in your pipeline was arrived at by reasoning rather than by
 measurement, it is probably fitted to the one dataset you had in front of you.
 
-**Availability is a spectrum, not a boolean.** Four distinct unavailability
-reasons demanding four different product responses, plus one state where the
-model claims to be there and isn't. Designing for that is most of the work of
-building on a platform model.
-
-**Not shipping the model means shipping everything else twice.** Every model
-path needed a real fallback, and "real" means the statistical floor is good
-enough to ship on its own. c-TF-IDF isn't a stub — it's a second product.
+**Grouping and naming are two different jobs.** Embeddings are excellent at
+deciding what belongs together and structurally incapable of saying what it is,
+because everything they can offer you is a word that was already in the text. We
+spent a while trying to do both with one tool, and the tell was that the
+clusters were right while their names were nonsense.
 
 **The expensive frame is rarely where you think.** The most costly thing in an
 AI app turned out to be a photo gently drifting.
 
 **Restraint is the feature.** In a mental-health context, the design work is
 mostly deciding what not to do. No auto-detected distortions. No streaks. No
-score. No question at all rather than a canned one.
+score.
 
 ---
 
@@ -751,34 +672,6 @@ flutter pub get
 
 flutter run                                  # booted iOS 26 simulator or device
 flutter run --dart-define=SEED_DEMO=true     # + 12 believable clustered logs
-```
-
-ObjectBox bindings are checked in, so a fresh clone needs no codegen.
-
-### Validate
-
-```bash
-flutter analyze     # must be clean
-flutter test        # 190 tests, ~110s
-```
-
-### Build an IPA
-
-Set your own Team and bundle identifier in `ios/Runner.xcworkspace` first — the
-repo ships `com.example.froyou` and the author's team, and both will fail for
-you.
-
-```bash
-flutter build ipa --export-method development
-# → build/ios/ipa/*.ipa
-```
-
-No Apple Developer account? Build unsigned and package it yourself:
-
-```bash
-flutter build ios --release --no-codesign
-cd build/ios/iphoneos && mkdir -p Payload && cp -R Runner.app Payload/ \
-  && zip -qr ../../../froyou-unsigned.ipa Payload && rm -rf Payload && cd ../../..
 ```
 
 ### Confirm which tier you're on

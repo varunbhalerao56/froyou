@@ -6,6 +6,7 @@ import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:froyou/core/logging/app_log.dart';
+import 'package:froyou/features/home/data/follow_up_service.dart';
 import 'package:froyou/features/journal/data/repository/journal_entry_db.dart';
 import 'package:froyou/features/profile/data/profile_store.dart';
 import 'package:froyou/features/reminders/data/reminder_settings.dart';
@@ -31,8 +32,22 @@ class ReminderService extends ChangeNotifier {
   ReminderService({
     required this._store,
     required this._db,
+    FollowUpService? followUp,
     @visibleForTesting FlutterLocalNotificationsPlugin? plugin,
-  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+    // Not an initializing formal, because the field is also assigned through
+    // a setter — the journal controller that owns a FollowUpService is built
+    // after this, taking this object's enrichment hook.
+    // ignore: prefer_initializing_formals
+  }) : _followUp = followUp,
+       _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+
+  /// Optional, because Home builds fine without it and the reminder service is
+  /// constructed before the journal controller that owns one.
+  FollowUpService? _followUp;
+
+  /// Wired after construction — see `FroyouRoot`, where the two are built in
+  /// that order and neither can take the other in its constructor.
+  set followUp(FollowUpService? value) => _followUp = value;
 
   @visibleForTesting
   static const String settingsKey = 'reminders.settings';
@@ -43,6 +58,10 @@ class ReminderService extends ChangeNotifier {
   /// A single, always-replaced request. Rescheduling overwrites rather than
   /// stacking, so there is never more than one reminder pending.
   static const int notificationId = 1;
+
+  /// The follow-up's own request, separate so the two can be scheduled,
+  /// cancelled and replaced independently.
+  static const int followUpNotificationId = 2;
 
   /// Used whenever the model is unavailable, latched off, or returns nothing —
   /// which on the Simulator is always. The model is never required.
@@ -149,6 +168,9 @@ class ReminderService extends ChangeNotifier {
       _permissionDenied = false;
       await _write(_settings.copyWith(enabled: false));
       await _safely(() => _plugin.cancel(id: notificationId));
+      // The follow-up rides on reminders being on at all — there is one
+      // permission and one switch the user thinks of as "notifications".
+      await _safely(() => _plugin.cancel(id: followUpNotificationId));
       notifyListeners();
       return false;
     }
@@ -158,7 +180,10 @@ class ReminderService extends ChangeNotifier {
     final granted = await _requestPermission();
     _permissionDenied = !granted;
     await _write(_settings.copyWith(enabled: granted));
-    if (granted) await _reschedule();
+    if (granted) {
+      await _reschedule();
+      await refreshFollowUp();
+    }
     notifyListeners();
     return granted;
   }
@@ -168,6 +193,21 @@ class ReminderService extends ChangeNotifier {
     if (updated == _settings) return;
     await _write(updated);
     if (_settings.enabled) await _reschedule();
+    notifyListeners();
+  }
+
+  Future<void> setFollowUpEnabled(bool enabled) async {
+    if (_settings.followUpEnabled == enabled) return;
+    await _write(_settings.copyWith(followUpEnabled: enabled));
+    await refreshFollowUp();
+    notifyListeners();
+  }
+
+  Future<void> setFollowUpTime(TimeOfDay time) async {
+    final updated = _settings.withFollowUpTime(time);
+    if (updated == _settings) return;
+    await _write(updated);
+    await refreshFollowUp();
     notifyListeners();
   }
 
@@ -203,7 +243,66 @@ class ReminderService extends ChangeNotifier {
   ///
   /// Never awaited by the caller and never throws: a reminder is not worth
   /// delaying, let alone failing, a log the user has already written.
-  void onJournalEnriched() => unawaited(refreshBody());
+  void onJournalEnriched() {
+    unawaited(refreshBody());
+    unawaited(refreshFollowUp());
+  }
+
+  /// Arms tomorrow morning's follow-up with a question written *now*.
+  ///
+  /// iOS wants a notification's text at scheduling time, and nothing of ours
+  /// runs when it fires — so the question cannot be composed then. It is
+  /// composed at the end of a save instead, which is also the only moment the
+  /// day's mood and themes are actually known. The same reason `refreshBody`
+  /// exists.
+  ///
+  /// The consequence worth knowing: the armed question describes the day the
+  /// last log was written on. Write again later the same day and it is
+  /// rewritten; the notification always carries the most recent read of that
+  /// day.
+  @visibleForTesting
+  Future<void> refreshFollowUp() async {
+    if (!_ready) return;
+    if (!_settings.enabled || !_settings.followUpEnabled) {
+      await _safely(() => _plugin.cancel(id: followUpNotificationId));
+      return;
+    }
+
+    try {
+      final question = await _followUp?.questionForTomorrow();
+      // Nothing to ask is a real answer — no logs yesterday, or the model
+      // declined. Better to send nothing than a generic nudge dressed as a
+      // question about a day the user did not have.
+      if (question == null || question.isEmpty) {
+        await _safely(() => _plugin.cancel(id: followUpNotificationId));
+        return;
+      }
+      await _scheduleFollowUp(question);
+    } catch (e, stackTrace) {
+      AppLog.error('Reminders', 'follow-up refresh failed', e, stackTrace);
+    }
+  }
+
+  Future<void> _scheduleFollowUp(String question) async {
+    await _safely(
+      () => _plugin.zonedSchedule(
+        id: followUpNotificationId,
+        title: title,
+        body: question,
+        scheduledDate: nextOccurrence(_settings.followUpTimeOfDay),
+        notificationDetails: const NotificationDetails(
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentSound: true,
+            presentBadge: false,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        // Deliberately *not* daily, unlike the nudge. A follow-up is about one
+        // particular day, so it fires once and is re-armed by the next save.
+      ),
+    );
+  }
 
   @visibleForTesting
   Future<void> refreshBody() async {

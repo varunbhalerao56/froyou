@@ -8,15 +8,19 @@ import 'package:froyou/services/services.dart';
 /// The question that replaces "How are you feeling?" the morning after a rough
 /// day.
 ///
-/// Three rules shape this, and they're all about not being annoying:
+/// Two rules shape this, and they're both about not being annoying:
 ///
 /// * It only appears the **day after**, never in the moment. Asking someone how
-///   a bad day is sitting while they're still in it isn't reflection, it's
-///   nagging.
-/// * It triggers on the **day's average** mood, not any single low entry — one
-///   passing grumble inside an otherwise fine day shouldn't summon a check-in.
+///   a day is sitting while they're still in it isn't reflection, it's nagging.
 /// * It clears the moment they log today. It has done its job, and leaving it
 ///   up would keep re-raising something already addressed.
+///
+/// It used to fire only after a *bad* day. That was wrong: a good day is worth
+/// asking about too, and a journal that only speaks up when things are grim
+/// teaches you it is the bad-news app. The day's **average** mood now picks the
+/// question's tone rather than deciding whether there is one — an average
+/// rather than the lowest entry, so one passing grumble doesn't recolour an
+/// otherwise fine day.
 ///
 /// The generated text is cached against the date it was made for, so Home never
 /// waits on the model.
@@ -30,9 +34,20 @@ class FollowUpService {
 
   static const String _cacheKey = 'home.followUp';
 
-  /// Below this, yesterday counts as a hard day. Not 0: everyday writing skews
-  /// slightly negative, and a threshold at neutral would fire almost daily.
+  /// Below this, yesterday reads as a hard day. Not 0: everyday writing skews
+  /// slightly negative, so neutral would call almost everything hard.
   static const double moodThreshold = -0.15;
+
+  /// Above this it reads as a good one. Between the two is an ordinary day,
+  /// which gets its own framing rather than being forced into either.
+  static const double goodMoodThreshold = 0.15;
+
+  /// The day's character, as the prompt sees it.
+  static String toneFor(double average) => average < moodThreshold
+      ? 'hard'
+      : average > goodMoodThreshold
+      ? 'good'
+      : 'steady';
 
   /// Sentences handed to the model as context. Enough to ground the question,
   /// short enough to stay well inside the prompt budget.
@@ -67,13 +82,13 @@ class FollowUpService {
       if (scored.isEmpty) return null;
 
       final average = scored.reduce((a, b) => a + b) / scored.length;
-      if (average >= moodThreshold) return null;
 
       if (!(await GenAiService.availability()).isAvailable) return null;
 
       final question = await GenAiService.followUpQuestion(
         themes: _recentThemes(yesterday),
-        excerpt: _excerptFrom(entries),
+        excerpt: _excerptFrom(entries, tone: toneFor(average)),
+        tone: toneFor(average),
       );
       if (question.isEmpty) return null;
 
@@ -88,6 +103,49 @@ class FollowUpService {
   /// Called after a log saves, so the prompt reverts to its default without
   /// waiting for the next launch.
   Future<void> clear() => _clearCache();
+
+  /// The question that *would* be asked tomorrow, written now.
+  ///
+  /// For the notification, which iOS wants the text of at scheduling time —
+  /// nothing of ours runs when it fires. So this reads the day the most recent
+  /// log belongs to, rather than "yesterday" relative to the clock, and asks
+  /// the same question about it that Home would ask the next morning.
+  ///
+  /// Null when there is nothing to ask about: no logs on that day, no
+  /// sentiment on any of them, or the model declining.
+  Future<String?> questionForTomorrow({DateTime? now}) async {
+    try {
+      final entries = _db.getAllEntries();
+      if (entries.isEmpty) return null;
+
+      final latest = entries.first.createdAt;
+      if (latest == null) return null;
+
+      final day = _startOfDay(latest);
+      final onDay = _entriesOn(day);
+      if (onDay.isEmpty) return null;
+
+      final scored = onDay
+          .map((entry) => entry.moodScore)
+          .whereType<double>()
+          .toList();
+      if (scored.isEmpty) return null;
+
+      if (!(await GenAiService.availability()).isAvailable) return null;
+
+      final average = scored.reduce((a, b) => a + b) / scored.length;
+      final tone = toneFor(average);
+      final question = await GenAiService.followUpQuestion(
+        themes: _recentThemes(day),
+        excerpt: _excerptFrom(onDay, tone: tone),
+        tone: tone,
+      );
+      return question.isEmpty ? null : question;
+    } catch (e) {
+      AppLog.warn('FollowUp', 'could not arm tomorrow: $e');
+      return null;
+    }
+  }
 
   /// The same question, generated on demand from the most recent log.
   ///
@@ -124,6 +182,7 @@ class FollowUpService {
       final question = await GenAiService.followUpQuestion(
         themes: themes,
         excerpt: excerpt,
+        tone: toneFor(latest.moodScore ?? 0),
       );
       return FollowUpPreview(
         themes: themes,
@@ -169,12 +228,20 @@ class FollowUpService {
     ].take(_themeCount).toList();
   }
 
-  /// The most negative entry's text, truncated. The lowest one rather than the
-  /// latest: it is the thing most worth asking about.
-  String _excerptFrom(List<JournalEntry> entries) {
+  /// The entry the question should be about, truncated.
+  ///
+  /// The most extreme one in the day's own direction — lowest after a hard day,
+  /// highest after a good one — rather than the latest. Quoting the day's one
+  /// bright moment back at someone who had a rough day, or its one complaint to
+  /// someone who had a good one, is the app misreading the room out loud.
+  String _excerptFrom(List<JournalEntry> entries, {String tone = 'hard'}) {
     final withMood = entries.where((e) => e.moodScore != null).toList()
       ..sort((a, b) => a.moodScore!.compareTo(b.moodScore!));
-    final source = withMood.isEmpty ? entries.first : withMood.first;
+    final source = withMood.isEmpty
+        ? entries.first
+        : tone == 'good'
+        ? withMood.last
+        : withMood.first;
     return ClusterLabeler.snippet(source.rawText ?? '', maxLength: 220);
   }
 

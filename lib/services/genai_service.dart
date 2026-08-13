@@ -174,15 +174,21 @@ class GenAiService {
     ];
   }
 
-  /// A gentle question for the morning after a hard day.
+  /// A gentle question for the morning after.
+  ///
+  /// [tone] is `hard`, `good` or `steady` — the day's own character, which
+  /// decides how the question is framed. A good day asked about as though it
+  /// were a bad one reads as the app not having listened.
   static Future<String> followUpQuestion({
     required List<String> themes,
     required String excerpt,
+    String tone = 'hard',
     Duration timeout = defaultTimeout,
   }) async {
     final result = await _invoke<Map<Object?, Object?>>('followUpQuestion', {
       'themes': themes,
       'excerpt': excerpt,
+      'tone': tone,
     }, timeout: timeout);
     return (result['question'] as String? ?? '').trim();
   }

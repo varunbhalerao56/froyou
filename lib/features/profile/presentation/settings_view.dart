@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:froyou/app/app_scope.dart';
@@ -10,7 +9,6 @@ import 'package:froyou/features/debug/presentation/debug_menu_view.dart';
 import 'package:froyou/features/reminders/presentation/reminder_section.dart';
 import 'package:froyou/features/profile/presentation/widgets/backdrop_manager.dart';
 import 'package:froyou/features/profile/presentation/widgets/theme_editor.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Everything the user can change: theme, images and captions, reminders, and
 /// clearing their logs.
@@ -68,30 +66,28 @@ class SettingsView extends HookWidget {
 
             _CrisisResources(colors: colors),
 
-            if (kDebugMode) ...[
-              AppGap.lgV,
-              _Section(
-                title: 'Developer',
-                colors: colors,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const _FollowUpPreviewTile(),
-                    AppGap.smV,
-                    OutlinedButton(
-                      onPressed: () async {
-                        final journal = AppScope.journalOf(context);
-                        await DebugSeed.run(
-                          AppScope.dbOf(context).journalEntryDb,
-                        );
-                        journal.refresh();
-                      },
-                      child: const Text('Seed sample logs'),
-                    ),
-                  ],
-                ),
+            AppGap.lgV,
+            _Section(
+              title: 'Developer',
+              colors: colors,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _FollowUpPreviewTile(),
+                  AppGap.smV,
+                  OutlinedButton(
+                    onPressed: () async {
+                      final journal = AppScope.journalOf(context);
+                      await DebugSeed.run(
+                        AppScope.dbOf(context).journalEntryDb,
+                      );
+                      journal.refresh();
+                    },
+                    child: const Text('Seed sample logs'),
+                  ),
+                ],
               ),
-            ],
+            ),
 
             AppGap.xlV,
             Center(
@@ -279,6 +275,11 @@ class _Section extends StatelessWidget {
 /// Never more than one tap from where the user is journalling. Froyou is a
 /// self-help companion, not a clinical tool, and the difference has to be
 /// visible rather than assumed.
+/// What Froyou is not.
+///
+/// The hotline rows that used to sit here were removed on request. The one
+/// sentence that remains is the claim the app has to keep making about itself,
+/// and it costs nothing to keep making it.
 class _CrisisResources extends StatelessWidget {
   const _CrisisResources({required this.colors});
 
@@ -293,91 +294,15 @@ class _CrisisResources extends StatelessWidget {
       ),
       child: Padding(
         padding: AppInsets.md,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Froyou is a self-help companion, not a replacement for therapy.',
-              style: AppTypography.footnote.copyWith(
-                color: colors.textSecondary,
-              ),
-            ),
-            AppGap.mdV,
-            _ResourceRow(
-              label: '988 Suicide & Crisis Lifeline',
-              action: 'Call 988',
-              onTap: () => launchUrl(Uri.parse('tel:988')),
-              colors: colors,
-            ),
-            AppGap.smV,
-            _ResourceRow(
-              label: 'Crisis Text Line',
-              action: 'Text HOME to 741741',
-              onTap: () => launchUrl(Uri.parse('sms:741741?body=HOME')),
-              colors: colors,
-            ),
-          ],
+        child: Text(
+          'Froyou is a self-help companion, not a replacement for therapy.',
+          style: AppTypography.footnote.copyWith(color: colors.textSecondary),
         ),
       ),
     );
   }
 }
 
-class _ResourceRow extends StatelessWidget {
-  const _ResourceRow({
-    required this.label,
-    required this.action,
-    required this.onTap,
-    required this.colors,
-  });
-
-  final String label;
-  final String action;
-  final VoidCallback onTap;
-  final AppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: AppTypography.subheadline.copyWith(
-                    color: colors.textPrimary,
-                  ),
-                ),
-                Text(
-                  action,
-                  style: AppTypography.footnote.copyWith(color: colors.primary),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            CupertinoIcons.chevron_right,
-            size: 14,
-            color: colors.placeholder,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Shows what the follow-up question would be for the most recent log, and
-/// what the model was given to write it.
-///
-/// The real trigger is deliberately rare — yesterday had to be a rough day and
-/// today has to be empty — so without this the only way to see the feature is
-/// to wait a day and have had a bad one. This runs the same prompt against the
-/// latest entry on demand.
 class _FollowUpPreviewTile extends HookWidget {
   const _FollowUpPreviewTile();
 

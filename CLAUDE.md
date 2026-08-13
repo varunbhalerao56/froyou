@@ -28,11 +28,14 @@ flutter test --update-goldens                # after any deliberate visual chang
 ./tool/fetch_illustrations.sh --preview      # intro art   ← unDraw, then look at it
 ```
 
-Settings has a debug-only **Seed sample logs** button, and long-pressing the
-version label opens `DebugMenuView` → `ChannelTestView`, the only way to
+Settings has a **Developer** section — *Preview follow-up question*, which runs
+the real prompt against your latest log without waiting for the day-after and
+mood gates that normally trigger it, and *Seed sample logs*. Both ship rather
+than being `kDebugMode`-gated, because both are how the thing gets demonstrated.
+
+Long-pressing the version label opens `DebugMenuView` → `ChannelTestView`, the only way to
 exercise the native speech/NLP/genai layer directly on a device, and the
-**Home layouts** gallery, which switches the arrangement live. Both ship in
-release; only the seed button is `kDebugMode`-gated.
+**Home layouts** gallery, which switches the arrangement live.
 
 At boot in debug you'll see `[boot] genai available=…`. Whether themes get
 named by the language model or the statistical fallback is invisible from the
@@ -318,8 +321,25 @@ whether a rebuild happened.
   The user must never lose words to an NLP failure.
 - **Cluster naming is always all clusters at once**, never just the ones that
   changed — both strategies score names against each other.
-- Safety framing is load-bearing: crisis resources stay one tap from Settings,
-  and distortions are self-tagged, never auto-detected.
+- **The follow-up asks about every day, not just bad ones.** The day's average
+  mood picks the question's *tone* — `hard`, `good` or `steady`, chosen in
+  `FollowUpService.toneFor` and branched on in Swift — rather than deciding
+  whether there is a question at all. A journal that only speaks up when things
+  are grim teaches you it is the bad-news app.
+- **A notification's text is composed when it is scheduled, never when it
+  fires.** Nothing of ours runs at fire time, so both `refreshBody` and
+  `refreshFollowUp` run at the end of a save. The consequence for the follow-up
+  is that the armed question describes the day the last log was written on, and
+  a later log the same day rewrites it.
+- Safety framing is load-bearing, and distortions are self-tagged, never
+  auto-detected. The crisis hotline rows were removed from Settings on request;
+  the "self-help companion, not a replacement for therapy" line stays, in
+  Settings and in onboarding.
+- **Backdrop framing is non-destructive.** `Backdrop.fit` and `Backdrop.focusY`
+  are applied at paint time, never by re-encoding the file, so `fill` with a
+  centred focus is byte-for-byte what the picker handed over. `whole` draws the
+  photo twice — an over-scaled blurred copy behind, the whole picture in
+  front — which costs one extra blur, and only for images set that way.
 
 ---
 

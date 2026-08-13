@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter, TileMode;
+
 import 'package:flutter/material.dart';
 import 'package:froyou/core/ui/noise_overlay.dart';
 import 'package:progressive_blur/progressive_blur.dart';
@@ -29,6 +31,8 @@ class EdgeGlowImage extends StatelessWidget {
     this.topBlurFadeEnd = 0.22,
     this.bottomBlurFadeStart = 0.74,
     this.blurSigma = 40.0,
+    this.fit = BoxFit.cover,
+    this.focusY = 0,
     super.key,
   });
 
@@ -54,6 +58,20 @@ class EdgeGlowImage extends StatelessWidget {
   /// at rest. The two-pass Gaussian runs a synchronous `toImageSync` at full
   /// device pixel ratio every frame, so fewer taps per pixel is real money.
   final double blurSigma;
+
+  /// [BoxFit.cover] crops the photo to the box. [BoxFit.contain] shows all of
+  /// it and fills what's left with an over-scaled, blurred copy of the same
+  /// picture — the fill is the photo's own colours, so the frame reads as part
+  /// of the image rather than as letterboxing.
+  final BoxFit fit;
+
+  /// Which part survives the crop, −1 (top) to 1 (bottom). Only meaningful
+  /// under [BoxFit.cover]; nothing is cropped otherwise.
+  final double focusY;
+
+  /// How hard the ambient fill is blurred. Enough that no detail in it
+  /// competes with the picture sitting on top.
+  static const double _fillSigma = 28;
 
   @override
   Widget build(BuildContext context) {
@@ -174,17 +192,13 @@ class EdgeGlowImage extends StatelessWidget {
                           topColor: topColor,
                           bottomColor: bottomColor,
                         )
-                      : Image(
+                      : _Photo(
                           image: image!,
-                          fit: BoxFit.cover,
-                          // Without this, swapping the backdrop in Settings
-                          // shows a blank frame while the new provider decodes.
-                          gaplessPlayback: true,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _MissingBackdrop(
-                                topColor: topColor,
-                                bottomColor: bottomColor,
-                              ),
+                          fit: fit,
+                          focusY: focusY,
+                          fillSigma: _fillSigma,
+                          topColor: topColor,
+                          bottomColor: bottomColor,
                         ),
                 ),
               ),
@@ -197,6 +211,70 @@ class EdgeGlowImage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The photo, framed.
+///
+/// Under [BoxFit.cover] this is one draw, exactly as it always was. Under
+/// [BoxFit.contain] it is two: the same decoded bitmap over-scaled and blurred
+/// behind, and the whole picture in front. The fill costs a second draw of a
+/// texture that is already in memory plus one blur — and only for images the
+/// user has actually asked to frame this way.
+class _Photo extends StatelessWidget {
+  const _Photo({
+    required this.image,
+    required this.fit,
+    required this.focusY,
+    required this.fillSigma,
+    required this.topColor,
+    required this.bottomColor,
+  });
+
+  final ImageProvider image;
+  final BoxFit fit;
+  final double focusY;
+  final double fillSigma;
+  final Color topColor;
+  final Color bottomColor;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget draw(BoxFit boxFit, Alignment alignment) => Image(
+      image: image,
+      fit: boxFit,
+      alignment: alignment,
+      // Without this, swapping the backdrop in Settings shows a blank frame
+      // while the new provider decodes.
+      gaplessPlayback: true,
+      errorBuilder: (context, error, stackTrace) =>
+          _MissingBackdrop(topColor: topColor, bottomColor: bottomColor),
+    );
+
+    if (fit != BoxFit.contain) {
+      return draw(BoxFit.cover, Alignment(0, focusY.clamp(-1.0, 1.0)));
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Blurred first, then over-scaled: blurring pulls the edges of the
+        // sampled area inward, and at this radius that would otherwise show as
+        // a soft border around the fill.
+        Transform.scale(
+          scale: 1.15,
+          child: ImageFiltered(
+            imageFilter: ImageFilter.blur(
+              sigmaX: fillSigma,
+              sigmaY: fillSigma,
+              tileMode: TileMode.decal,
+            ),
+            child: draw(BoxFit.cover, Alignment.center),
+          ),
+        ),
+        draw(BoxFit.contain, Alignment.center),
+      ],
     );
   }
 }

@@ -271,8 +271,36 @@ final class GenAiChannel: NSObject {
 
     let themes = (arguments["themes"] as? [String]) ?? []
     let excerpt = (arguments["excerpt"] as? String) ?? ""
+    let tone = (arguments["tone"] as? String) ?? "hard"
 
-    var context = "Yesterday was a hard day for them."
+    // The day's own character, in one line, because the question that follows a
+    // good day and the one that follows a bad day are not the same question and
+    // a single prompt cannot write both.
+    let opening: String
+    let guidance: String
+    switch tone {
+    case "good":
+      opening = "Yesterday went well for them."
+      guidance = """
+        Ask about the good of it without inflating it or congratulating them. \
+        What made it work, or what they want to carry into today. Do not treat \
+        a good day as a result to be maintained.
+        """
+    case "steady":
+      opening = "Yesterday was an ordinary day for them."
+      guidance = """
+        Ask an open question about where they are today. An unremarkable day \
+        is still worth noticing, so do not manufacture significance in it.
+        """
+    default:
+      opening = "Yesterday was a hard day for them."
+      guidance = """
+        Acknowledge what they said without repeating it back wholesale, and ask \
+        how it sits today.
+        """
+    }
+
+    var context = opening
     if !themes.isEmpty {
       context += " What came up: \(themes.joined(separator: ", "))."
     }
@@ -283,11 +311,12 @@ final class GenAiChannel: NSObject {
     let session = LanguageModelSession(
       instructions: """
         You write one short question for someone opening their journal the \
-        morning after a hard day.
+        morning after.
 
-        Be warm and plain. Acknowledge what they said without repeating it back \
-        wholesale, and ask how it sits today. Never give advice, never diagnose, \
-        never tell them how to feel, and never use an exclamation mark.
+        \(guidance)
+
+        Be warm and plain. Never give advice, never diagnose, never tell them \
+        how to feel, and never use an exclamation mark.
         """
     )
 

@@ -127,6 +127,15 @@ class ProfileController extends ChangeNotifier {
     );
   }
 
+  /// Framing is per image and non-destructive — nothing is re-encoded, so
+  /// putting it back where it started restores the original exactly.
+  Future<void> setFraming(int index, {BackdropFit? fit, double? focusY}) async {
+    if (index < 0 || index >= _profile.backdrops.length) return;
+    final updated = [..._profile.backdrops];
+    updated[index] = updated[index].copyWith(fit: fit, focusY: focusY);
+    await _writeProfile(_profile.copyWith(backdrops: updated));
+  }
+
   Future<void> setCaption(int index, String? caption) async {
     if (index < 0 || index >= _profile.backdrops.length) return;
     final trimmed = caption?.trim();

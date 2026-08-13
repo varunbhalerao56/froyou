@@ -1,6 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:froyou/core/theme/theme.dart';
+import 'package:froyou/core/ui/edge_glow_image.dart';
+import 'package:froyou/features/profile/data/backdrop.dart';
 import 'package:froyou/features/profile/data/user_profile.dart';
 import 'package:froyou/features/profile/presentation/profile_controller.dart';
 import 'package:froyou/features/profile/presentation/widgets/backdrop_picker.dart';
@@ -84,22 +87,37 @@ class _BackdropManagerState extends State<BackdropManager> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    ClipRSuperellipse(
-                      borderRadius: AppRadius.smAll,
-                      child: Image(
-                        image: widget.profile.providerFor(backdrop),
-                        width: 64,
-                        height: 64,
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
-                        errorBuilder: (context, error, stack) => Container(
+                    GestureDetector(
+                      onTap: () => showModalBottomSheet<void>(
+                        context: context,
+                        backgroundColor: colors.background,
+                        showDragHandle: true,
+                        isScrollControlled: true,
+                        builder: (_) => BackdropFramingSheet(
+                          profile: widget.profile,
+                          index: index,
+                        ),
+                      ),
+                      child: ClipRSuperellipse(
+                        borderRadius: AppRadius.smAll,
+                        child: Image(
+                          image: widget.profile.providerFor(backdrop),
                           width: 64,
                           height: 64,
-                          color: colors.textBox,
-                          child: Icon(
-                            CupertinoIcons.photo,
-                            size: 18,
-                            color: colors.placeholder,
+                          fit: backdrop.fit == BackdropFit.whole
+                              ? BoxFit.contain
+                              : BoxFit.cover,
+                          alignment: Alignment(0, backdrop.focusY),
+                          gaplessPlayback: true,
+                          errorBuilder: (context, error, stack) => Container(
+                            width: 64,
+                            height: 64,
+                            color: colors.textBox,
+                            child: Icon(
+                              CupertinoIcons.photo,
+                              size: 18,
+                              color: colors.placeholder,
+                            ),
                           ),
                         ),
                       ),
@@ -167,6 +185,158 @@ class _BackdropManagerState extends State<BackdropManager> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Choosing how one picture sits in the Home pane.
+///
+/// The pane is about 9:19.5 — taller than any camera produces — so every photo
+/// has to give something up. Which thing is a judgement about that picture, and
+/// this is where it gets made. Nothing here re-encodes the file: both controls
+/// are stored alongside the image and applied at paint time, so "Fill" with the
+/// slider centred is byte-for-byte what the picker handed over.
+class BackdropFramingSheet extends HookWidget {
+  const BackdropFramingSheet({
+    required this.profile,
+    required this.index,
+    super.key,
+  });
+
+  final ProfileController profile;
+  final int index;
+
+  /// The preview's shape. Not the real pane's — that would be nearly a full
+  /// screen — but the same proportions, so what is cropped here is what is
+  /// cropped there.
+  static const double _previewAspect = 9 / 19.5;
+
+  @override
+  Widget build(BuildContext context) {
+    useListenable(profile);
+    final colors = context.appColors;
+
+    if (index < 0 || index >= profile.backdrops.length) {
+      return const SizedBox.shrink();
+    }
+    final backdrop = profile.backdrops[index];
+    final cropping = backdrop.fit == BackdropFit.fill;
+
+    return SafeArea(
+      child: Padding(
+        padding: AppInsets.lg,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'How this sits',
+              textAlign: TextAlign.center,
+              style: AppTypography.headline.copyWith(color: colors.textPrimary),
+            ),
+            AppGap.lgV,
+
+            Center(
+              child: SizedBox(
+                height: 260,
+                child: AspectRatio(
+                  aspectRatio: _previewAspect,
+                  child: ClipRSuperellipse(
+                    borderRadius: AppRadius.mdAll,
+                    child: EdgeGlowImage(
+                      image: profile.providerFor(backdrop),
+                      topColor: colors.background,
+                      bottomColor: colors.background,
+                      imageHeight: 260,
+                      topGlowExtent: 0,
+                      bottomGlowExtent: 0,
+                      // The real pane blurs at 40 over a full screen. This box
+                      // is a fraction of that height, so the same sigma would
+                      // swallow the whole preview.
+                      blurSigma: 12,
+                      fit: cropping ? BoxFit.cover : BoxFit.contain,
+                      focusY: backdrop.focusY,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            AppGap.lgV,
+
+            Row(
+              spacing: AppSpacing.sm,
+              children: [
+                for (final option in BackdropFit.values)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => profile.setFraming(index, fit: option),
+                      behavior: HitTestBehavior.opaque,
+                      child: AnimatedContainer(
+                        duration: AppDurations.fast,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm,
+                        ),
+                        decoration: BoxDecoration(
+                          color: option == backdrop.fit
+                              ? colors.textBox
+                              : Colors.transparent,
+                          borderRadius: AppRadius.smAll,
+                        ),
+                        child: Center(
+                          child: Text(
+                            option.label,
+                            style: AppTypography.subheadline.copyWith(
+                              color: option == backdrop.fit
+                                  ? colors.textPrimary
+                                  : colors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            AppGap.mdV,
+
+            // Only means anything when something is actually being cut off.
+            if (cropping) ...[
+              Text(
+                'What to keep',
+                style: AppTypography.caption.copyWith(
+                  color: colors.placeholder,
+                ),
+              ),
+              Slider(
+                value: backdrop.focusY,
+                min: -1,
+                max: 1,
+                onChanged: (value) => profile.setFraming(index, focusY: value),
+              ),
+              Text(
+                'Drag to choose which part of a tall crop survives.',
+                style: AppTypography.caption.copyWith(
+                  color: colors.placeholder,
+                ),
+              ),
+            ] else
+              Text(
+                'The whole picture, with a blurred copy of itself filling the '
+                'rest. Good for anything wide.',
+                style: AppTypography.caption.copyWith(
+                  color: colors.placeholder,
+                ),
+              ),
+
+            AppGap.lgV,
+            TextButton(
+              onPressed: () =>
+                  profile.setFraming(index, fit: BackdropFit.fill, focusY: 0),
+              child: const Text('Reset'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -71,6 +71,35 @@ class ReminderSection extends HookWidget {
             'back to, on this device.',
             style: AppTypography.caption.copyWith(color: colors.placeholder),
           ),
+
+          AppGap.lgV,
+          Divider(color: colors.textBox, height: 1),
+          AppGap.lgV,
+
+          Text(
+            'Morning follow-up',
+            style: AppTypography.subheadline.copyWith(
+              color: colors.textPrimary,
+            ),
+          ),
+          AppGap.smV,
+          _Pills(
+            enabled: settings.followUpEnabled,
+            colors: colors,
+            onChanged: reminders.setFollowUpEnabled,
+            onLabel: 'On',
+          ),
+          if (settings.followUpEnabled) ...[
+            AppGap.smV,
+            _TimeRow(reminders: reminders, colors: colors, followUp: true),
+          ],
+          AppGap.smV,
+          Text(
+            'A question about the day before, written after your last log of '
+            'it — so it can be there before the morning writes over it. It '
+            'only arrives when there was actually a day to ask about.',
+            style: AppTypography.caption.copyWith(color: colors.placeholder),
+          ),
         ],
       ],
     );
@@ -84,15 +113,22 @@ class _Pills extends StatelessWidget {
     required this.enabled,
     required this.colors,
     required this.onChanged,
+    this.onLabel = 'Daily',
   });
 
   final bool enabled;
   final AppColors colors;
-  final Future<bool> Function(bool) onChanged;
+
+  /// Deliberately not typed to the return: `setEnabled` reports whether it
+  /// stuck and `setFollowUpEnabled` has nothing to report, and neither answer
+  /// is this widget's business — the service notifies and it repaints.
+  final void Function(bool) onChanged;
+
+  final String onLabel;
 
   @override
   Widget build(BuildContext context) {
-    const options = {false: 'Off', true: 'Daily'};
+    final options = {false: 'Off', true: onLabel};
 
     return Row(
       spacing: AppSpacing.sm,
@@ -133,13 +169,23 @@ class _Pills extends StatelessWidget {
 }
 
 class _TimeRow extends StatelessWidget {
-  const _TimeRow({required this.reminders, required this.colors});
+  const _TimeRow({
+    required this.reminders,
+    required this.colors,
+    this.followUp = false,
+  });
 
   final ReminderService reminders;
   final AppColors colors;
 
+  /// The same control for both times. They differ only in which setting they
+  /// read and write, and a second near-identical widget would drift.
+  final bool followUp;
+
   Future<void> _open(BuildContext context) async {
-    var draft = reminders.settings.timeOfDay;
+    var draft = followUp
+        ? reminders.settings.followUpTimeOfDay
+        : reminders.settings.timeOfDay;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -152,7 +198,7 @@ class _TimeRow extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Remind me at',
+                followUp ? 'Ask me at' : 'Remind me at',
                 style: AppTypography.headline.copyWith(
                   color: colors.textPrimary,
                 ),
@@ -217,7 +263,9 @@ class _TimeRow extends StatelessWidget {
     // Committed once the sheet closes, not per tick: onDateTimeChanged fires
     // continuously while the wheel spins, and each commit writes preferences
     // and re-arms the notification.
-    await reminders.setTime(draft);
+    await (followUp
+        ? reminders.setFollowUpTime(draft)
+        : reminders.setTime(draft));
   }
 
   @override
@@ -238,7 +286,10 @@ class _TimeRow extends StatelessWidget {
               spacing: AppSpacing.xs,
               children: [
                 Text(
-                  reminders.settings.timeOfDay.format(context),
+                  (followUp
+                          ? reminders.settings.followUpTimeOfDay
+                          : reminders.settings.timeOfDay)
+                      .format(context),
                   style: AppTypography.body.copyWith(color: colors.primary),
                 ),
                 Icon(

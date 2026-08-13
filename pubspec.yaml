@@ -2,7 +2,7 @@ name: froyou
 description: "Froyou"
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.12.2

@@ -117,7 +117,9 @@ void main() {
 
       expect(await reminders.setEnabled(true), isTrue);
 
-      expect(methods(), ['requestPermissions', 'zonedSchedule']);
+      // The trailing cancel clears any follow-up left armed from a previous
+      // run: turning reminders on does not turn the follow-up on with them.
+      expect(methods(), ['requestPermissions', 'zonedSchedule', 'cancel']);
       expect(reminders.settings.enabled, isTrue);
       expect(reminders.permissionDenied, isFalse);
     });
@@ -189,6 +191,10 @@ void main() {
       expect(jsonDecode(raw!), {
         'enabled': true,
         'minutesFromMidnight': 8 * 60 + 15,
+        // The follow-up is a separate opt-in with its own time — written
+        // alongside so a settings blob is never half a record.
+        'followUpEnabled': false,
+        'followUpMinutesFromMidnight': 9 * 60,
       });
     });
 
@@ -236,6 +242,83 @@ void main() {
         from: now,
       );
       expect(next, tz.TZDateTime(tz.local, 2026, 8, 13, 21));
+    });
+  });
+
+  group('follow-up notification', () {
+    test('does nothing while it is switched off', () async {
+      final reminders = service();
+      addTearDown(reminders.dispose);
+      await reminders.init();
+      await reminders.setEnabled(true);
+      calls.clear();
+
+      await reminders.refreshFollowUp();
+
+      // Cancelled, never scheduled: an armed request from a previous run must
+      // not survive the switch going off.
+      expect(methods(), ['cancel']);
+    });
+
+    test('without a FollowUpService there is nothing to arm', () async {
+      final reminders = service();
+      addTearDown(reminders.dispose);
+      await reminders.init();
+      await reminders.setEnabled(true);
+      await reminders.setFollowUpEnabled(true);
+      calls.clear();
+
+      await reminders.refreshFollowUp();
+
+      expect(
+        methods().where((m) => m == 'zonedSchedule'),
+        isEmpty,
+        reason:
+            'no question means no notification, rather than a generic one '
+            'dressed as a question about a day that did not happen',
+      );
+    });
+
+    test('the time and switch persist', () async {
+      final reminders = service();
+      addTearDown(reminders.dispose);
+      await reminders.init();
+      await reminders.setEnabled(true);
+
+      await reminders.setFollowUpEnabled(true);
+      await reminders.setFollowUpTime(const TimeOfDay(hour: 7, minute: 30));
+
+      expect(reminders.settings.followUpEnabled, isTrue);
+      expect(reminders.settings.followUpMinutesFromMidnight, 7 * 60 + 30);
+
+      final raw = profileStore.getString(ReminderService.settingsKey);
+      expect((jsonDecode(raw!) as Map)['followUpMinutesFromMidnight'], 450);
+    });
+
+    test('turning reminders off takes the follow-up with it', () async {
+      final reminders = service();
+      addTearDown(reminders.dispose);
+      await reminders.init();
+      await reminders.setEnabled(true);
+      await reminders.setFollowUpEnabled(true);
+      calls.clear();
+
+      await reminders.setEnabled(false);
+
+      // Both requests, because there is one permission and one thing the user
+      // thinks of as "notifications".
+      // The plugin sends `cancel` with the bare id, not a map.
+      final cancelled = calls
+          .where((call) => call.method == 'cancel')
+          .map((call) => call.arguments)
+          .toList();
+      expect(
+        cancelled,
+        containsAll([
+          ReminderService.notificationId,
+          ReminderService.followUpNotificationId,
+        ]),
+      );
     });
   });
 

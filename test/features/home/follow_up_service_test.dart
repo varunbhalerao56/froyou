@@ -19,6 +19,7 @@ void main() {
   late FollowUpService service;
   int counter = 0;
   int questionCalls = 0;
+  String? lastTone;
 
   /// The model answers, so any null result is the *rules* declining rather than
   /// the model being absent.
@@ -29,6 +30,7 @@ void main() {
           return {'status': 'available'};
         case 'followUpQuestion':
           questionCalls++;
+          lastTone = (call.arguments as Map)['tone'] as String?;
           return {'question': question};
         default:
           return null;
@@ -48,6 +50,7 @@ void main() {
 
   setUp(() async {
     questionCalls = 0;
+    lastTone = null;
     SharedPreferences.setMockInitialValues({});
     store = Store(
       getObjectBoxModel(),
@@ -82,23 +85,41 @@ void main() {
     expect(questionCalls, 1);
   });
 
-  test('stays quiet after a day that averaged out fine', () async {
-    mockModelAvailable();
-    // One rough moment inside an otherwise good day is not a hard day, and
-    // treating it as one would make this fire almost daily.
-    await addEntry(yesterday, -0.7);
-    await addEntry(yesterday, 0.6);
-    await addEntry(yesterday, 0.5);
+  test(
+    'a day that averaged out fine is asked about as an ordinary one',
+    () async {
+      mockModelAvailable();
+      // One rough moment inside an otherwise good day is not a hard day. It used
+      // to silence the question entirely; now it only decides the framing.
+      await addEntry(yesterday, -0.7);
+      await addEntry(yesterday, 0.6);
+      await addEntry(yesterday, 0.5);
 
-    expect(await service.pendingQuestion(now: today), isNull);
-    expect(questionCalls, 0);
-  });
+      expect(await service.pendingQuestion(now: today), isNotNull);
+      expect(lastTone, 'steady');
+    },
+  );
 
-  test('stays quiet when yesterday was positive', () async {
+  test('a good day still gets a question, framed as a good one', () async {
     mockModelAvailable();
     await addEntry(yesterday, 0.7);
 
-    expect(await service.pendingQuestion(now: today), isNull);
+    expect(await service.pendingQuestion(now: today), isNotNull);
+    expect(
+      lastTone,
+      'good',
+      reason:
+          'a journal that only speaks up after bad days teaches you it is '
+          'the bad-news app',
+    );
+  });
+
+  test('a hard day is still framed as a hard one', () async {
+    mockModelAvailable();
+    await addEntry(yesterday, -0.8);
+
+    expect(await service.pendingQuestion(now: today), isNotNull);
+    expect(lastTone, 'hard');
   });
 
   test('stays quiet when there was no yesterday', () async {

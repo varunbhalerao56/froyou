@@ -136,6 +136,10 @@ class BackdropCarousel extends HookWidget {
                   child: RepaintBoundary(
                     child: EdgeGlowImage(
                       image: providerFor(backdrops[i]),
+                      fit: backdrops[i].fit == BackdropFit.whole
+                          ? BoxFit.contain
+                          : BoxFit.cover,
+                      focusY: backdrops[i].focusY,
                       topColor: glowColor,
                       bottomColor: glowColor,
                       imageHeight: imageHeight,

@@ -57,7 +57,10 @@ void main() {
       );
     }
     useIosNotificationPlatform();
-    final reminders = ReminderService(store: profileStore, db: db.journalEntryDb);
+    final reminders = ReminderService(
+      store: profileStore,
+      db: db.journalEntryDb,
+    );
     await reminders.init();
     debugDefaultTargetPlatformOverride = null;
     return reminders;
@@ -86,7 +89,10 @@ void main() {
 
   for (final (name, enabled) in [('off', false), ('on', true)]) {
     testWidgets('reminders $name', (tester) async {
-      tester.view.physicalSize = const Size(1179, 700);
+      // Tall enough for the section at its fullest — reminders on, with the
+      // follow-up row and its copy below. Settings itself scrolls; this frame
+      // does not, so it has to fit the whole thing or overflow.
+      tester.view.physicalSize = const Size(1179, 1200);
       tester.view.devicePixelRatio = 3;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -97,8 +103,14 @@ void main() {
       await tester.pumpWidget(frame(reminders));
       await tester.pumpAndSettle();
 
-      expect(find.text('Off'), findsOneWidget);
       expect(find.text('Daily'), findsOneWidget);
+      // Two 'Off' cells once reminders are on — the daily nudge's, and the
+      // follow-up's own pill row underneath it.
+      expect(find.text('Off'), enabled ? findsNWidgets(2) : findsOneWidget);
+      expect(
+        find.text('Morning follow-up'),
+        enabled ? findsOneWidget : findsNothing,
+      );
       // The time only appears once reminders are on — an inert time row above
       // an off switch is the kind of dead control this section avoids.
       expect(find.text('Time'), enabled ? findsOneWidget : findsNothing);
