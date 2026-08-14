@@ -1,4 +1,4 @@
-# Froyou (v1.0.2+3)
+# Froyou (v1.0.4+5)
 
 Talk or type a log. Froyou notices what you keep coming back to.
 
@@ -72,3 +72,10 @@ flutter test
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+That covers the source, tests, tooling and docs. It does not cover the bundled
+third-party assets: **SF Pro Rounded** in `fonts/` is Apple's and is included
+under Apple's font licence rather than relicensed here, and the onboarding
+drawings in `assets/illustrations/` come from [unDraw](https://undraw.co). See
+[`NOTICE`](NOTICE) — and fetch the fonts from
+[Apple](https://developer.apple.com/fonts/) rather than this copy if you fork.

@@ -1,0 +1,41 @@
+Froyou
+Copyright (c) 2026 Varun Bhalerao
+
+The MIT licence in LICENSE covers this project's own source code, tests,
+tooling and documentation. It does not cover the third-party assets listed
+below, which are included under their own terms and are not relicensed by
+the MIT grant.
+
+--------------------------------------------------------------------------
+fonts/SF-Pro-Rounded-{Regular,Medium,Semibold,Bold}.otf
+--------------------------------------------------------------------------
+
+SF Pro Rounded, (c) Apple Inc. Bundled so the app renders the same face
+Apple's own iOS interfaces use, which is a use the SF font licence permits
+for software running on Apple platforms.
+
+Apple does not grant redistribution rights for these files, so they are not
+covered by the MIT licence above and no right to copy, modify or relicense
+them is offered here. If you fork this repository, obtain the fonts from
+Apple directly rather than relying on this copy:
+
+    https://developer.apple.com/fonts/
+
+Their terms:
+
+    https://www.apple.com/legal/sla/fonts/
+
+--------------------------------------------------------------------------
+assets/illustrations/*.svg
+--------------------------------------------------------------------------
+
+Four drawings from unDraw (https://undraw.co), by Katerina Limpitsouni,
+under the unDraw licence: https://undraw.co/license
+
+unDraw is free for commercial and personal use and requires no attribution;
+this entry is here for completeness, and because the files have been
+modified. Every fill has been rewritten to a palette role (__INK__,
+__SURFACE__, __ACCENT__ and so on) so the app can resolve them against the
+live theme, which means they are no longer valid SVGs as shipped. The
+originals, their unDraw slugs, and the script that refetches them are
+documented in assets/illustrations/README.md.

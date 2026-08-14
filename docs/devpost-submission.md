@@ -1,6 +1,10 @@
   # Froyou
   
-  **Arm AI Optimization Challenge 2026 — Track 3: Mobile AI**
+  **Arm AI Optimization Challenge 2026 — Track 1: Optimization output · Edge AI**
+  
+  > **Setup, build and validation instructions are in the
+  > [README on GitHub](https://github.com/varunbhalerao56/froyou#getting-started).**
+  > A TestFlight link is on the submission page if you'd rather just run it.
   
   A local-first iOS journal that notices what you keep coming back to. You talk or
   type; it transcribes, reads the mood, embeds every sentence, groups those
