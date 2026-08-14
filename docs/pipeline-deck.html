@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>froyou — on-device, end to end</title>
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   SF Pro Rounded — the app's own face, set from the repo's own
+   files rather than hoping the viewer resolves `ui-rounded`.
+   ───────────────────────────────────────────────────────────── */
+@font-face { font-family:"SF Pro Rounded Local"; src:url("../fonts/SF-Pro-Rounded-Regular.otf") format("opentype");  font-weight:400; font-display:swap; }
+@font-face { font-family:"SF Pro Rounded Local"; src:url("../fonts/SF-Pro-Rounded-Medium.otf") format("opentype");   font-weight:500; font-display:swap; }
+@font-face { font-family:"SF Pro Rounded Local"; src:url("../fonts/SF-Pro-Rounded-Semibold.otf") format("opentype"); font-weight:600; font-display:swap; }
+@font-face { font-family:"SF Pro Rounded Local"; src:url("../fonts/SF-Pro-Rounded-Bold.otf") format("opentype");     font-weight:700; font-display:swap; }
+
+:root {
+  color-scheme: dark;
+
+  /* Brand — the Paper preset in dark, which is what the new mark and every
+     screenshot in this deck are wearing. */
+  --ink:            #9DB4D4;
+  --surface-0:      #16181D;
+  --surface-1:      #1c1f26;
+  --surface-2:      #242832;
+  --line:           #343b48;
+  --line-soft:      #2a303b;
+
+  --text-primary:   #ECEFF4;
+  --text-secondary: #B4BDCB;
+  --text-muted:     #7E8899;
+
+  /* Categorical series — validated dark steps. Adjacent CVD ΔE 8.4 min,
+     normal-vision ΔE 19.3 min, all ≥3:1 on --surface-1. Fixed order. */
+  --series-1: #3987e5;   /* speech */
+  --series-2: #d95926;   /* language */
+  --series-3: #199e70;   /* embeddings */
+  --series-4: #c98500;   /* clustering */
+  --series-5: #d55181;   /* generation */
+
+  /* Diverging pair + neutral midpoint, for the signed mood axis. */
+  --div-neg: #1a7fb8;  --div-mid: #6b7280;  --div-pos: #d16a25;
+
+  --good: #199e70;  --bad: #e06b6b;
+
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --rounded: "SF Pro Rounded Local", ui-rounded, "SF Pro Rounded",
+             -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --r-sm: 10px; --r-md: 16px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font-family: var(--rounded); -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+
+/* ─── Living backdrop: cached layers, transform-only ─────────── */
+.backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.blob { position: absolute; border-radius: 50%; filter: blur(95px); opacity: .42; will-change: transform; }
+.blob.a { width: 62vmax; height: 62vmax; left: -20vmax; top: -24vmax;
+  background: radial-gradient(circle, #33415c 0%, rgba(51,65,92,0) 70%); animation: drift-a 36s ease-in-out infinite; }
+.blob.b { width: 54vmax; height: 54vmax; right: -18vmax; top: 6vmax;
+  background: radial-gradient(circle, #3d3a63 0%, rgba(61,58,99,0) 70%); animation: drift-b 44s ease-in-out infinite; }
+.blob.c { width: 48vmax; height: 48vmax; left: 24vmax; bottom: -22vmax;
+  background: radial-gradient(circle, #27354d 0%, rgba(39,53,77,0) 70%); animation: drift-c 50s ease-in-out infinite; }
+@keyframes drift-a { 0%,100%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(6vmax,4vmax,0) scale(1.12)} }
+@keyframes drift-b { 0%,100%{transform:translate3d(0,0,0) scale(1.06)} 50%{transform:translate3d(-5vmax,6vmax,0) scale(1)} }
+@keyframes drift-c { 0%,100%{transform:translate3d(0,0,0) scale(1)} 50%{transform:translate3d(4vmax,-5vmax,0) scale(1.1)} }
+.noise { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .04;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>"); }
+
+/* ─── Deck mechanics ─────────────────────────────────────────── */
+.deck { position: relative; z-index: 2; height: 100%; overflow-y: auto;
+        scroll-snap-type: y mandatory; scroll-behavior: smooth; scrollbar-width: none; }
+.deck::-webkit-scrollbar { display: none; }
+.slide { scroll-snap-align: start; scroll-snap-stop: always; min-height: 100%;
+         display: flex; flex-direction: column; justify-content: center; padding: 54px 6vw 84px; }
+.slide-inner { width: 100%; max-width: 1240px; margin: 0 auto; }
+
+.eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+           color: var(--ink); margin: 0 0 14px; }
+h1 { font-size: clamp(40px, 5.4vw, 72px); font-weight: 700; letter-spacing: -.03em; line-height: 1.03; margin: 0 0 16px; }
+h2 { font-size: clamp(30px, 3.6vw, 50px); font-weight: 700; letter-spacing: -.028em; line-height: 1.06; margin: 0 0 14px; }
+h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 6px; }
+.lede { font-size: clamp(17px, 1.6vw, 22px); line-height: 1.45; color: var(--text-secondary);
+        max-width: 30ch; margin: 0 0 26px; }
+p { line-height: 1.5; color: var(--text-secondary); margin: 0; }
+.small { font-size: 13.5px; line-height: 1.5; color: var(--text-muted); }
+code, .mono { font-family: var(--mono); font-size: .88em; }
+code { color: var(--ink); background: rgba(157,180,212,.1); padding: 1px 6px; border-radius: 6px; }
+strong { color: var(--text-primary); font-weight: 600; }
+
+/* Reveal on enter */
+.rv { opacity: 0; transform: translateY(18px); }
+.slide.on .rv { animation: rise .6s cubic-bezier(.22,.8,.3,1) forwards; }
+.slide.on .rv:nth-child(1){animation-delay:.02s} .slide.on .rv:nth-child(2){animation-delay:.1s}
+.slide.on .rv:nth-child(3){animation-delay:.18s} .slide.on .rv:nth-child(4){animation-delay:.26s}
+.slide.on .rv:nth-child(5){animation-delay:.34s} .slide.on .rv:nth-child(6){animation-delay:.42s}
+@keyframes rise { to { opacity: 1; transform: none; } }
+
+.progress { position: fixed; top: 0; left: 0; height: 2px; z-index: 10; background: var(--ink); width: 0; transition: width .35s ease; }
+.dots { position: fixed; right: 20px; top: 50%; transform: translateY(-50%); z-index: 10; display: flex; flex-direction: column; gap: 11px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; border: 0; padding: 0; background: rgba(157,180,212,.26); cursor: pointer; transition: all .25s ease; }
+.dot:hover { background: rgba(157,180,212,.6); }
+.dot.on { background: var(--ink); transform: scale(1.5); }
+.hint { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 10;
+        font-size: 12px; color: var(--text-muted); transition: opacity .5s ease; }
+.slide-no { position: fixed; bottom: 18px; right: 20px; z-index: 10; font-family: var(--mono); font-size: 12px; color: var(--text-muted); }
+
+/* ─── Layout ─────────────────────────────────────────────────── */
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2,1fr); }
+.g3 { grid-template-columns: repeat(3,1fr); }
+.g4 { grid-template-columns: repeat(4,1fr); }
+.split { display: grid; grid-template-columns: 1fr 300px; gap: 42px; align-items: center; }
+.split.wide { grid-template-columns: 1fr 340px; }
+@media (max-width: 980px) { .g2,.g3,.g4 { grid-template-columns: 1fr; } .split { grid-template-columns: 1fr; } }
+
+.card { background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 17px 19px; }
+.card h3 { display: flex; align-items: center; gap: 9px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+.chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500;
+        color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--line);
+        padding: 6px 13px; border-radius: 999px; }
+.chip .swatch { width: 7px; height: 7px; border-radius: 50%; }
+.chips { display: flex; flex-wrap: wrap; gap: 9px; }
+
+.tile { background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 18px 20px; }
+.tile .n { font-size: clamp(30px,3.4vw,44px); font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+.tile .n .u { font-size: .42em; font-weight: 600; color: var(--text-secondary); margin-left: 3px; letter-spacing: 0; }
+.tile .k { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-top: 8px; }
+
+/* ─── The mark ───────────────────────────────────────────────────
+   The icon art shown as an icon — a squircle tile — and the display
+   wordmark set live from the same face in the same accent. Cropping
+   the wordmark out of the artwork instead left a visible rectangle:
+   its background is a shade off the deck's own surface, and no blend
+   mode hides that. The art has a stripe down its right edge, so the
+   tile is 122% wide and left-anchored to leave it outside. */
+.icon-tile {
+  width: 128px; height: 128px; border-radius: 29px; flex: none;
+  background: url("shots/logo.png") no-repeat left center / 122% auto;
+  box-shadow: 0 14px 40px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.07);
+}
+.wordmark {
+  font-size: clamp(60px, 9vw, 116px); font-weight: 700; letter-spacing: -.045em;
+  line-height: .92; color: var(--ink);
+  filter: drop-shadow(0 6px 30px rgba(157,180,212,.22));
+}
+.breathe { animation: breathe 9s ease-in-out infinite; transform-origin: center; }
+@keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.02)} }
+
+/* ─── Phone frames ───────────────────────────────────────────── */
+.phone { position: relative; border-radius: 40px; padding: 7px; background: linear-gradient(160deg,#3a4150,#20242c);
+         box-shadow: 0 26px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.05); }
+.phone img { display: block; width: 100%; border-radius: 33px; }
+.phone.tilt { transform: rotate(-2.2deg); }
+.phone.tilt-r { transform: rotate(2.2deg); }
+.slide.on .phone { animation: phoneIn .8s cubic-bezier(.22,.85,.3,1) both; animation-delay: .25s; }
+@keyframes phoneIn { from { opacity: 0; transform: translateY(30px) rotate(0deg) scale(.97); } }
+.slide.on .phone.tilt   { animation-name: phoneInL; }
+.slide.on .phone.tilt-r { animation-name: phoneInR; }
+@keyframes phoneInL { from { opacity:0; transform: translateY(30px) rotate(0) scale(.97) } to { opacity:1; transform: rotate(-2.2deg) } }
+@keyframes phoneInR { from { opacity:0; transform: translateY(30px) rotate(0) scale(.97) } to { opacity:1; transform: rotate(2.2deg) } }
+.shot-cap { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 12px; font-family: var(--mono); }
+
+/* ─── Flow diagram ───────────────────────────────────────────── */
+.flow { display: flex; align-items: stretch; flex-wrap: wrap; }
+.node { position: relative; flex: 1 1 0; min-width: 116px; background: var(--surface-1);
+        border: 1px solid var(--line-soft); border-left: 3px solid var(--nc, var(--ink));
+        border-radius: var(--r-sm); padding: 12px 14px; }
+.node .t { font-size: 13.5px; font-weight: 600; color: var(--text-primary); line-height: 1.25; }
+.node .d { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-family: var(--mono); line-height: 1.4; }
+.arrow { flex: 0 0 30px; display: flex; align-items: center; justify-content: center; }
+.arrow svg { overflow: visible; }
+.arrow .track { stroke: var(--line); stroke-width: 2; }
+.arrow .pulse { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 6 24; }
+.slide.on .arrow .pulse { animation: run 1.8s linear infinite; }
+@keyframes run { to { stroke-dashoffset: -30; } }
+
+/* One phase-2 step and where its output actually lands. The steps are not a
+   single chain — two of them feed the card you look at, three feed the themes. */
+.prow { display: grid; grid-template-columns: 190px 20px 1fr; gap: 12px; align-items: center;
+        padding: 9px 0; border-bottom: 1px dashed var(--line-soft); }
+.prow:last-child { border-bottom: 0; }
+.prow .to { color: var(--text-muted); font-size: 15px; text-align: center; }
+.dest { font-size: 13.5px; color: var(--text-muted); line-height: 1.35; }
+.dest b { color: var(--text-primary); font-weight: 600; }
+.dest .tag { font-size: 10.5px; font-family: var(--mono); color: var(--text-muted);
+             border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; margin-left: 7px; }
+
+.lane { display: grid; grid-template-columns: 84px 1fr; gap: 14px; align-items: center;
+        padding: 10px 0; border-bottom: 1px dashed var(--line-soft); }
+.lane:last-child { border-bottom: 0; }
+.lane .who { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+             color: var(--text-muted); text-align: right; }
+
+/* Bullets — the presenter's cue cards, not prose */
+.pts { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 13px; }
+.pts li { display: flex; gap: 12px; align-items: baseline; font-size: 16px; color: var(--text-secondary); line-height: 1.4; }
+.pts li b { color: var(--text-primary); font-weight: 600; }
+.pts .n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+          font-size: 11.5px; font-weight: 700; background: var(--surface-2); border: 1px solid var(--line);
+          color: var(--ink); position: relative; top: 3px; }
+
+.note { border-left: 3px solid var(--ink); background: rgba(157,180,212,.06);
+        border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 12px 15px; font-size: 14px;
+        line-height: 1.5; color: var(--text-secondary); }
+
+/* ─── Charts ─────────────────────────────────────────────────── */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.tick { font-size: 10.5px; fill: var(--text-muted); font-family: var(--mono); }
+.mark-g { transition: opacity .18s ease; }
+.chart:hover .mark-g { opacity: .45; }
+.chart .mark-g:hover, .chart .mark-g.hot { opacity: 1; }
+.dlabel { font-size: 12px; font-weight: 600; fill: var(--text-primary); }
+.dsub { font-size: 10.5px; fill: var(--text-muted); font-family: var(--mono); }
+.tooltip { position: absolute; z-index: 5; pointer-events: none; opacity: 0; transform: translate(-50%,-114%);
+           background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+           padding: 8px 11px; font-size: 12.5px; line-height: 1.4; color: var(--text-primary);
+           box-shadow: 0 8px 26px rgba(0,0,0,.55); transition: opacity .13s ease; white-space: nowrap; }
+.tooltip .tk { color: var(--text-muted); font-size: 11px; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+.legend .item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary); }
+details.table-view { margin-top: 10px; }
+details.table-view summary { cursor: pointer; font-size: 12.5px; color: var(--text-muted); list-style: none; }
+details.table-view summary::-webkit-details-marker { display: none; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); }
+th { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); }
+td { color: var(--text-secondary); }
+td.num { font-family: var(--mono); color: var(--text-primary); }
+
+.bar-grow-x { transform: scaleX(0); transform-origin: left; }
+.slide.on .bar-grow-x { animation: growX .8s cubic-bezier(.22,.9,.3,1) forwards; }
+@keyframes growX { to { transform: scaleX(1); } }
+.scatter circle { transition: cx 1.15s cubic-bezier(.3,.9,.3,1), cy 1.15s cubic-bezier(.3,.9,.3,1), fill .5s ease; }
+
+/* ─── Live transcript ────────────────────────────────────────── */
+.transcript { font-size: clamp(18px,2vw,26px); font-weight: 600; letter-spacing: -.02em; line-height: 1.4; min-height: 2.8em; }
+.transcript .w { opacity: 0; display: inline-block; margin-right: .28em;
+                 animation: wordIn .5s cubic-bezier(.22,.8,.3,1) forwards; }
+.transcript .w.settled { color: var(--text-primary); }
+.transcript .w.volatile { color: var(--text-muted); }
+@keyframes wordIn { from { opacity:0; transform: translateY(7px) } to { opacity:1; transform:none } }
+.mic { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+.mic .led { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); animation: led 1.3s ease-in-out infinite; }
+@keyframes led { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.8)} }
+
+.btn { font-family: var(--rounded); font-size: 13px; font-weight: 600; color: var(--surface-0);
+       background: var(--ink); border: 0; border-radius: 999px; padding: 9px 20px; cursor: pointer; }
+
+/* ─── Fitting a laptop ───────────────────────────────────────── */
+@media (max-height: 1040px) {
+  .slide { padding: 40px 5vw 62px; }
+  h1 { font-size: clamp(34px,4.4vw,58px); }
+  h2 { font-size: clamp(27px,3vw,40px); }
+  .lede { font-size: clamp(16px,1.35vw,19px); margin-bottom: 20px; }
+  .card { padding: 14px 16px; }
+  .tile { padding: 14px 16px; }
+  .tile .n { font-size: clamp(26px,2.7vw,36px); }
+  .grid { gap: 13px; }
+  .split { gap: 34px; grid-template-columns: 1fr 268px; }
+  .split.wide { grid-template-columns: 1fr 300px; }
+  .pts li { font-size: 15px; }
+  .node { padding: 9px 11px; }
+  .transcript { font-size: clamp(17px,1.8vw,22px); }
+}
+@media (max-height: 860px) {
+  .slide { padding: 30px 5vw 52px; }
+  .split { grid-template-columns: 1fr 232px; gap: 28px; }
+  .split.wide { grid-template-columns: 1fr 258px; }
+  .pts { gap: 10px; } .pts li { font-size: 14.5px; }
+  .lede { font-size: 15.5px; margin-bottom: 16px; }
+}
+
+/* Flat mode — `?flat`, and printing. Nothing arrives by animation. */
+body.flat .rv { opacity:1 !important; transform:none !important; animation:none !important; }
+body.flat .bar-grow-x, body.flat .transcript .w, body.flat .phone {
+  transform: none !important; opacity: 1 !important; animation: none !important; }
+body.flat .phone.tilt { transform: rotate(-2.2deg) !important; }
+body.flat .phone.tilt-r { transform: rotate(2.2deg) !important; }
+body.flat .blob, body.flat .breathe, body.flat .arrow .pulse, body.flat .mic .led { animation: none !important; }
+@media print {
+  body { overflow: visible; } .deck { height: auto; overflow: visible; }
+  .slide { page-break-after: always; min-height: auto; }
+  .dots, .hint, .progress, .slide-no { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important;
+    transition-duration:.001ms !important; scroll-behavior:auto !important; }
+  .rv { opacity: 1; transform: none; }
+}
+</style>
+</head>
+
+<body data-palette="#3987e5,#d95926,#199e70,#c98500,#d55181">
+
+<div class="backdrop" aria-hidden="true"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+<div class="noise" aria-hidden="true"></div>
+
+<div class="progress" id="progress"></div>
+<nav class="dots" id="dots" aria-label="Slides"></nav>
+<div class="hint" id="hint">↓ scroll · ← → arrow keys</div>
+<div class="slide-no" id="slideNo">01</div>
+
+<main class="deck" id="deck">
+
+<!-- ══════════════ 01 · TITLE ══════════════ -->
+<section class="slide" data-title="froyou">
+  <div class="slide-inner split wide">
+    <div>
+      <p class="eyebrow rv">local-first · ios 26</p>
+      <div class="rv"><div class="wordmark breathe">froyou</div></div>
+      <p class="lede rv" style="margin-top:26px; max-width:22ch;">
+        A journal that notices what you keep coming back to.
+      </p>
+      <div class="grid g4 rv">
+        <div class="tile"><div class="n">4</div><div class="k">Apple models, on device</div></div>
+        <div class="tile"><div class="n">512<span class="u">d</span></div><div class="k">Sentence embedding</div></div>
+        <div class="tile"><div class="n">39<span class="u">MB</span></div><div class="k">App size — the models ship with iOS</div></div>
+        <div class="tile"><div class="n">0</div><div class="k">Network calls</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="phone tilt-r"><img src="shots/home.png" alt="froyou home screen, with a photo backdrop and the prompt “How are you feeling?”"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 02 · THE MAP ══════════════ -->
+<section class="slide" data-title="The map">
+  <div class="slide-inner">
+    <p class="eyebrow rv">architecture</p>
+    <h2 class="rv">Flutter draws. Swift thinks.</h2>
+
+    <div class="grid g3 rv" style="margin-top:22px">
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-1)"></span>app/speech</h3>
+        <p class="small" style="margin-top:6px">EventChannel + MethodChannel</p>
+        <div class="chips" style="margin-top:12px">
+          <span class="chip">SpeechTranscriber</span><span class="chip">streaming</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-2)"></span>app/nlp</h3>
+        <p class="small" style="margin-top:6px">MethodChannel</p>
+        <div class="chips" style="margin-top:12px">
+          <span class="chip">NLTokenizer</span><span class="chip">NLTagger</span><span class="chip">NLContextualEmbedding</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-5)"></span>app/genai</h3>
+        <p class="small" style="margin-top:6px">MethodChannel</p>
+        <div class="chips" style="margin-top:12px">
+          <span class="chip">SystemLanguageModel</span><span class="chip">@Generable</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid g3 rv" style="margin-top:16px">
+      <div class="tile"><div class="n">ObjectBox</div><div class="k">Local store · 512-dim vector index</div></div>
+      <div class="tile"><div class="n">2 phases</div><div class="k">Text saves first. NLP catches up.</div></div>
+      <div class="tile"><div class="n">Offline</div><div class="k">Airplane mode changes nothing</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 03 · MODELS ══════════════ -->
+<section class="slide" data-title="Models">
+  <div class="slide-inner">
+    <p class="eyebrow rv">the models</p>
+    <h2 class="rv">Four models — and one thing that isn't</h2>
+
+    <div class="grid g4 rv" style="margin-top:22px">
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-1)"></span>SpeechTranscriber</h3>
+        <p class="small" style="margin-top:6px">Speech recognition. Its weights download per language and live on the phone.</p>
+      </div>
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-2)"></span>NLTagger · sentiment</h3>
+        <p class="small" style="margin-top:6px">A trained classifier. One score per log, −1 to +1.</p>
+      </div>
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-3)"></span>NLContextualEmbedding</h3>
+        <p class="small" style="margin-top:6px">512 numbers per sentence. This is what makes different words the same theme.</p>
+      </div>
+      <div class="card">
+        <h3><span class="swatch" style="background:var(--series-5)"></span>SystemLanguageModel</h3>
+        <p class="small" style="margin-top:6px">Names themes, writes the follow-up. Typed output via <code>@Generable</code>.</p>
+      </div>
+    </div>
+
+    <div class="card rv" style="margin-top:16px; border-style:dashed; background:transparent">
+      <h3 style="color:var(--text-muted)">NLTokenizer — not a model. Rules and dictionaries.</h3>
+      <p class="small" style="margin-top:6px">
+        It cuts a log into <b style="color:var(--text-secondary)">sentences</b> — and a theme is a
+        sentence, not a log. "Dinner with my sister was lovely, but work is still on me" is two
+        different themes in one paragraph. It runs before every embedding call.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 04 · VOICE ══════════════ -->
+<section class="slide" data-title="Voice">
+  <div class="slide-inner split">
+    <div>
+      <p class="eyebrow rv" style="color:var(--series-1)">flow 01</p>
+      <h2 class="rv">You talk</h2>
+
+      <div class="rv flow" style="margin:20px 0 24px">
+        <div class="node" style="--nc:var(--series-1)"><div class="t">AVAudioEngine</div><div class="d">mic buffers</div></div>
+        <div class="arrow"><svg width="30" height="10" viewBox="0 0 30 10"><line class="track" x1="0" y1="5" x2="30" y2="5"/><line class="pulse" x1="0" y1="5" x2="30" y2="5"/></svg></div>
+        <div class="node" style="--nc:var(--series-1)"><div class="t">Converter</div><div class="d">device → analyzer fmt</div></div>
+        <div class="arrow"><svg width="30" height="10" viewBox="0 0 30 10"><line class="track" x1="0" y1="5" x2="30" y2="5"/><line class="pulse" x1="0" y1="5" x2="30" y2="5"/></svg></div>
+        <div class="node" style="--nc:var(--series-1)"><div class="t">SpeechAnalyzer</div><div class="d">+ Transcriber</div></div>
+        <div class="arrow"><svg width="30" height="10" viewBox="0 0 30 10"><line class="track" x1="0" y1="5" x2="30" y2="5"/><line class="pulse" x1="0" y1="5" x2="30" y2="5"/></svg></div>
+        <div class="node" style="--nc:var(--ink)"><div class="t">EventChannel</div><div class="d">→ Dart</div></div>
+      </div>
+
+      <div class="card rv">
+        <div class="mic" style="margin-bottom:9px"><span class="led"></span><span id="micState">listening</span></div>
+        <div class="transcript" id="transcript" aria-live="polite"></div>
+        <div class="legend">
+          <span class="item"><span class="swatch" style="background:var(--text-primary)"></span>settled</span>
+          <span class="item"><span class="swatch" style="background:var(--text-muted)"></span>still being revised</span>
+        </div>
+      </div>
+
+      <ul class="pts rv" style="margin-top:20px">
+        <li><span class="n">1</span><span>Words arrive <b>revisable</b> — "chest tight" becomes "chest tighten"</span></li>
+        <li><span class="n">2</span><span>Each word gets an <b>id</b>, so only new words fade in</span></li>
+      </ul>
+    </div>
+    <div>
+      <div class="phone tilt"><img src="shots/transcribe.png" alt="Live transcription in the app"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 05 · THE SAVE ══════════════ -->
+<section class="slide" data-title="The save">
+  <div class="slide-inner split">
+    <div>
+      <p class="eyebrow rv" style="color:var(--series-2)">flow 02</p>
+      <h2 class="rv">Then the log is taken apart</h2>
+
+      <div class="card rv" style="margin-top:16px">
+        <div class="lane" style="border-bottom:1px solid var(--line-soft)">
+          <div class="who">Phase 1</div>
+          <div class="flow">
+            <div class="node" style="--nc:var(--ink)"><div class="t">Save the words</div><div class="d">synchronous · instant · never fails</div></div>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:84px 1fr; gap:14px; margin-top:10px">
+          <div class="who" style="font-size:11px; font-weight:600; letter-spacing:.07em;
+               text-transform:uppercase; color:var(--text-muted); text-align:right; padding-top:14px">Phase 2</div>
+          <div>
+            <div class="prow">
+              <div class="node" style="--nc:var(--series-2)"><div class="t">Sentiment</div><div class="d">NLTagger</div></div>
+              <span class="to">→</span>
+              <div class="dest">the <b>mood dot</b>, and tomorrow's tone<span class="tag">per log</span></div>
+            </div>
+            <div class="prow">
+              <div class="node" style="--nc:var(--series-5)"><div class="t">Keywords</div><div class="d">the model</div></div>
+              <span class="to">→</span>
+              <div class="dest">the <b>three words on the card</b><span class="tag">view only</span></div>
+            </div>
+            <div class="prow">
+              <div class="node" style="--nc:var(--series-3)"><div class="t">Embed</div><div class="d">512d per sentence</div></div>
+              <span class="to">→</span>
+              <div class="dest">a point in meaning-space</div>
+            </div>
+            <div class="prow">
+              <div class="node" style="--nc:var(--series-4)"><div class="t">Group</div><div class="d">threshold measured, not fixed</div></div>
+              <span class="to">→</span>
+              <div class="dest">which <b>theme</b> the sentence joins<span class="tag">all of them, from scratch</span></div>
+            </div>
+            <div class="prow">
+              <div class="node" style="--nc:var(--series-5)"><div class="t">Name every theme</div><div class="d">the model, one call</div></div>
+              <span class="to">→</span>
+              <div class="dest">"work stress" · "sleep issues"<span class="tag">next slide</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card rv" style="margin-top:14px">
+        <div class="chart" id="scatterWrap" style="max-width:540px"></div>
+        <div style="display:flex; gap:12px; align-items:center; margin-top:10px; flex-wrap:wrap">
+          <button class="btn" id="regroup">Regroup</button>
+          <span class="small" id="scatterState">one theme has swallowed everything</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="phone tilt-r"><img src="shots/logs.png" alt="The logs list, each card with its keywords and a mood dot"></div>
+      <div class="shot-cap">keywords · mood · all derived on device</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 06 · PATTERNS ══════════════ -->
+<section class="slide" data-title="Patterns">
+  <div class="slide-inner split">
+    <div>
+      <p class="eyebrow rv" style="color:var(--series-5)">flow 03</p>
+      <h2 class="rv">The pattern comes back</h2>
+
+      <div class="rv flow" style="margin:20px 0 22px">
+        <div class="node" style="--nc:var(--series-4)"><div class="t">Each theme's most central sentences</div><div class="d">6, ranked by cosine</div></div>
+        <div class="arrow"><svg width="30" height="10" viewBox="0 0 30 10"><line class="track" x1="0" y1="5" x2="30" y2="5"/><line class="pulse" x1="0" y1="5" x2="30" y2="5"/></svg></div>
+        <div class="node" style="--nc:var(--series-5)"><div class="t">Name them all at once</div><div class="d">one inference</div></div>
+        <div class="arrow"><svg width="30" height="10" viewBox="0 0 30 10"><line class="track" x1="0" y1="5" x2="30" y2="5"/><line class="pulse" x1="0" y1="5" x2="30" y2="5"/></svg></div>
+        <div class="node" style="--nc:var(--ink)"><div class="t">"work stress" · 4 times</div><div class="d">7-day window</div></div>
+      </div>
+
+      <div class="card rv">
+        <h3>Last 7 days</h3>
+        <!-- Capped, or the SVG scales to the card and the marks stop being thin. -->
+        <div class="chart" id="chartThemes" style="margin-top:10px; max-width:560px"></div>
+        <details class="table-view"><summary>Table view</summary>
+          <table id="tableThemes"><thead><tr><th>Theme</th><th>Entries</th></tr></thead><tbody></tbody></table>
+        </details>
+      </div>
+
+      <ul class="pts rv" style="margin-top:20px">
+        <li><span class="n">1</span><span>Counted by <b>distinct logs</b>, not sentences</span></li>
+        <li><span class="n">2</span><span>Every count is backed by <b>your own words</b></span></li>
+      </ul>
+    </div>
+    <div>
+      <div class="phone tilt"><img src="shots/patterns.png" alt="The Patterns screen: “You talked about work stress 4 times”, with the sentences underneath"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 07 · FOLLOW-UP ══════════════ -->
+<section class="slide" data-title="Follow-up">
+  <div class="slide-inner split">
+    <div>
+      <p class="eyebrow rv" style="color:var(--series-5)">flow 04</p>
+      <h2 class="rv">And the morning after, it asks</h2>
+
+      <ul class="pts rv" style="margin-top:20px">
+        <li><span class="n">1</span><span>Only the <b>day after</b> — never in the moment</span></li>
+        <li><span class="n">2</span><span>Gone the second you log today</span></li>
+        <li><span class="n">3</span><span>Written at <b>save time</b>, so the screen never waits</span></li>
+      </ul>
+
+      <div class="card rv" style="margin-top:20px">
+        <h3>Yesterday's average mood picks the tone</h3>
+        <div class="chart" id="toneScale" style="margin-top:12px"></div>
+      </div>
+
+      <div class="note rv" style="margin-top:18px">
+        Good days get asked about too. A journal that only speaks up when things
+        are grim teaches you it's the bad-news app.
+      </div>
+    </div>
+    <div>
+      <div class="phone tilt-r"><img src="shots/followup.png" alt="The debug preview sheet: the themes and the excerpt the model was given, and the question it wrote back"></div>
+      <div class="shot-cap">what it was given · what it asked</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 08 · CLOSE ══════════════ -->
+<section class="slide" data-title="End">
+  <div class="slide-inner split">
+    <div>
+      <p class="eyebrow rv">end to end</p>
+      <h1 class="rv" style="max-width:14ch">Voice in.<br>Pattern out.<br>Nothing leaves.</h1>
+      <div class="chips rv" style="margin:24px 0 30px">
+        <span class="chip"><span class="swatch" style="background:var(--series-1)"></span>SpeechTranscriber</span>
+        <span class="chip"><span class="swatch" style="background:var(--series-2)"></span>NLTokenizer</span>
+        <span class="chip"><span class="swatch" style="background:var(--series-2)"></span>NLTagger</span>
+        <span class="chip"><span class="swatch" style="background:var(--series-3)"></span>NLContextualEmbedding</span>
+        <span class="chip"><span class="swatch" style="background:var(--series-5)"></span>SystemLanguageModel</span>
+      </div>
+      <div class="rv"><div class="icon-tile breathe"></div></div>
+    </div>
+    <div>
+      <div class="phone tilt"><img src="shots/settings.png" alt="Settings: theme presets, your images, reminders"></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+"use strict";
+
+if (location.search.includes("flat")) document.body.classList.add("flat");
+
+/* ═══════════════ Deck navigation ═══════════════ */
+const deck = document.getElementById("deck");
+const slides = [...document.querySelectorAll(".slide")];
+const dotsBox = document.getElementById("dots");
+const progress = document.getElementById("progress");
+const slideNo = document.getElementById("slideNo");
+const hint = document.getElementById("hint");
+
+slides.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "dot"; b.type = "button";
+  b.setAttribute("aria-label", `${i + 1}. ${s.dataset.title}`);
+  b.title = s.dataset.title;
+  b.addEventListener("click", () => go(i));
+  dotsBox.appendChild(b);
+});
+const dots = [...dotsBox.children];
+
+let current = 0;
+function go(i) {
+  current = Math.max(0, Math.min(slides.length - 1, i));
+  slides[current].scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+const io = new IntersectionObserver(entries => {
+  for (const e of entries) {
+    if (e.intersectionRatio < 0.55) continue;
+    const i = slides.indexOf(e.target);
+    current = i;
+    slides.forEach((s, n) => s.classList.toggle("on", n === i));
+    dots.forEach((d, n) => d.classList.toggle("on", n === i));
+    progress.style.width = ((i + 1) / slides.length * 100) + "%";
+    slideNo.textContent = String(i + 1).padStart(2, "0");
+    hint.style.opacity = i === 0 ? "1" : "0";
+    history.replaceState(null, "", "#" + (i + 1));
+    onEnter(i);
+  }
+}, { root: deck, threshold: [0.55] });
+slides.forEach(s => io.observe(s));
+
+addEventListener("keydown", e => {
+  const k = e.key;
+  if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " ") { e.preventDefault(); go(current + 1); }
+  else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp") { e.preventDefault(); go(current - 1); }
+  else if (k === "Home") { e.preventDefault(); go(0); }
+  else if (k === "End") { e.preventDefault(); go(slides.length - 1); }
+});
+
+/* ═══════════════ Chart helpers ═══════════════ */
+const NS = "http://www.w3.org/2000/svg";
+const el = (name, attrs = {}, text) => {
+  const n = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (text != null) n.textContent = text;
+  return n;
+};
+function tooltipFor(host) {
+  const t = document.createElement("div");
+  t.className = "tooltip"; host.appendChild(t);
+  return {
+    show(x, y, html) { t.innerHTML = html; t.style.left = x + "px"; t.style.top = y + "px"; t.style.opacity = "1"; },
+    hide() { t.style.opacity = "0"; }
+  };
+}
+
+/* ── Theme occurrences. One series → direct labels, no legend box. ── */
+(function themeChart() {
+  const data = [
+    { label: "work stress", n: 4, quote: "My manager moved the deadline forward again and I felt my chest tighten." },
+    { label: "sleep issues", n: 3, quote: "I slept badly again and everything felt heavier because of it." },
+    { label: "late-night work", n: 2, quote: "Last night I couldn't sleep because I was working too late." },
+    { label: "sister time", n: 2, quote: "Dinner with my sister was genuinely lovely and I laughed properly." }
+  ];
+  const host = document.getElementById("chartThemes");
+  const W = 520, rowH = 42, MR = 40, H = data.length * rowH, maxN = 4, iw = W - MR;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": "Recurring themes over the last seven days by number of distinct logs: work stress four, sleep issues three, late-night work two, sister time two." });
+  const tip = tooltipFor(host);
+
+  data.forEach((d, i) => {
+    const y = i * rowH, bw = (d.n / maxN) * iw;
+    const g = el("g", { class: "mark-g" });
+    svg.appendChild(el("text", { class: "dlabel", x: 0, y: y + 12 }, d.label));
+    const bar = el("rect", { x: 0, y: y + 20, width: Math.max(6, bw), height: 11, rx: 4,
+      fill: "var(--series-5)", class: "bar-grow-x" });
+    bar.style.animationDelay = (i * 0.09) + "s";
+    // Square the baseline end so the bar is anchored rather than floating.
+    const foot = el("rect", { x: 0, y: y + 20, width: 5, height: 11, fill: "var(--series-5)", class: "bar-grow-x" });
+    foot.style.animationDelay = (i * 0.09) + "s";
+    g.appendChild(bar); g.appendChild(foot);
+    g.appendChild(el("text", { class: "dsub", x: bw + 8, y: y + 29 }, `${d.n}×`));
+
+    const hit = el("rect", { x: 0, y: y, width: W, height: rowH - 3, fill: "transparent" });
+    const move = ev => {
+      const rc = host.getBoundingClientRect();
+      tip.show(ev.clientX - rc.left, (y + 20) / H * rc.height,
+        `<span class="tk">${d.n} logs · 7 days</span>
+         <span style="white-space:normal;max-width:250px;display:inline-block">“${d.quote}”</span>`);
+    };
+    hit.addEventListener("mouseenter", ev => { g.classList.add("hot"); move(ev); });
+    hit.addEventListener("mousemove", move);
+    hit.addEventListener("mouseleave", () => { g.classList.remove("hot"); tip.hide(); });
+    g.appendChild(hit);
+    svg.appendChild(g);
+  });
+  host.appendChild(svg);
+
+  const tb = document.querySelector("#tableThemes tbody");
+  data.forEach(d => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${d.label}</td><td class="num">${d.n}</td>`;
+    tb.appendChild(tr);
+  });
+})();
+
+/* ── Tone scale: a diverging axis with a neutral middle. ── */
+(function toneScale() {
+  const host = document.getElementById("toneScale");
+  const W = 520, ML = 14, MR = 14, iw = W - ML - MR;
+  const svg = el("svg", { viewBox: `0 0 ${W} 78`, role: "img",
+    "aria-label": "The day's average mood from minus one to plus one in three bands: hard below minus 0.15, steady between, good above plus 0.15." });
+  const sx = v => ML + (v + 1) / 2 * iw;
+  const bands = [
+    { from: -1, to: -0.15, name: "hard", fill: "var(--div-neg)", note: "how does it sit today" },
+    { from: -0.15, to: 0.15, name: "steady", fill: "var(--div-mid)", note: "where are you today" },
+    { from: 0.15, to: 1, name: "good", fill: "var(--div-pos)", note: "what made it work" }
+  ];
+  bands.forEach((b, i) => {
+    const x = sx(b.from), w = sx(b.to) - sx(b.from);
+    // 2px surface gap between adjacent fills.
+    svg.appendChild(el("rect", { x: x + (i ? 1 : 0), y: 26, width: w - (i ? 1 : 0) - (i < 2 ? 1 : 0), height: 16, rx: 4, fill: b.fill }));
+    svg.appendChild(el("text", { class: "dlabel", x: x + w / 2, y: 18, "text-anchor": "middle" }, b.name));
+  });
+  [[-1, "−1.0"], [-0.15, "−0.15"], [0.15, "+0.15"], [1, "+1.0"]].forEach(([v, t]) => {
+    svg.appendChild(el("line", { x1: sx(v), x2: sx(v), y1: 42, y2: 48, stroke: "var(--line)" }));
+    svg.appendChild(el("text", { class: "tick", x: sx(v), y: 62, "text-anchor": "middle" }, t));
+  });
+  host.appendChild(svg);
+
+  // Band notes as HTML rows: three captions centred under three bands of
+  // unequal width collide, and "steady" is only 15% of the axis.
+  const notes = document.createElement("div");
+  notes.style.cssText = "display:flex;flex-direction:column;gap:5px;margin-top:8px";
+  bands.forEach(b => {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:9px;align-items:baseline;font-size:12.5px";
+    row.innerHTML = `<span class="swatch" style="background:${b.fill};position:relative;top:2px"></span>
+      <span style="color:var(--text-primary);font-weight:600;min-width:50px">${b.name}</span>
+      <span style="color:var(--text-muted)">${b.note}</span>`;
+    notes.appendChild(row);
+  });
+  host.appendChild(notes);
+})();
+
+/* ═══════════════ Cluster scatter ═══════════════ */
+const scatter = (function () {
+  const host = document.getElementById("scatterWrap");
+  const W = 480, H = 118;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": "Sentence embeddings as dots: first with one theme having absorbed most of them, then regrouped into three separated themes." });
+  svg.setAttribute("class", "scatter");
+  host.appendChild(svg);
+
+  const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
+  const MUTED = "var(--text-muted)";
+  let s = 24601;
+  const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+
+  const centres = [[95, 48], [246, 40], [378, 74]];
+  const points = [];
+  for (let c = 0; c < 3; c++) {
+    for (let i = 0; i < 9; i++) {
+      const a = rnd() * Math.PI * 2, r = 10 + rnd() * 26;
+      points.push({ cluster: c, gx: centres[c][0] + Math.cos(a) * r, gy: centres[c][1] + Math.sin(a) * r * 0.55,
+        sx: 30 + rnd() * (W - 60), sy: 16 + rnd() * (H - 32) });
+    }
+  }
+  const nodes = points.map(p => {
+    const c = el("circle", { cx: p.sx, cy: p.sy, r: 5, fill: MUTED, stroke: "var(--surface-1)", "stroke-width": 2 });
+    svg.appendChild(c); return c;
+  });
+
+  let grouped = false;
+  function set(state) {
+    grouped = state;
+    points.forEach((p, i) => {
+      if (grouped) {
+        nodes[i].setAttribute("cx", p.gx.toFixed(1));
+        nodes[i].setAttribute("cy", p.gy.toFixed(1));
+        nodes[i].setAttribute("fill", COLORS[p.cluster]);
+      } else {
+        nodes[i].setAttribute("cx", p.sx.toFixed(1));
+        nodes[i].setAttribute("cy", p.sy.toFixed(1));
+        nodes[i].setAttribute("fill", i % 7 === 0 ? MUTED : COLORS[0]);
+      }
+    });
+    document.getElementById("scatterState").textContent = grouped
+      ? "regrouped from scratch — three themes"
+      : "one theme has swallowed everything";
+  }
+  set(false);
+  document.getElementById("regroup").addEventListener("click", () => set(!grouped));
+  return { set };
+})();
+
+/* ═══════════════ Live transcript ═══════════════ */
+const transcript = (function () {
+  const box = document.getElementById("transcript");
+  const state = document.getElementById("micState");
+
+  // Each frame is one SpeechTranscriber result. Its text covers that result's
+  // range — cumulative and revisable while unfinalized, starting over once a
+  // final settles the range behind it.
+  const frames = [
+    { text: "my" }, { text: "my chest" }, { text: "my chest tight" },
+    { text: "my chest tighten" },                       // volatile revision
+    { text: "my chest tightened when" },
+    { text: "my chest tightened when the" },
+    { text: "my chest tightened when the date", final: true },
+    { text: "moved" }, { text: "moved again" }, { text: "moved again", final: true }
+  ];
+
+  let words = [], settledCount = 0, nextId = 0;
+
+  function ingest(frame) {
+    const incoming = frame.text.split(/\s+/).filter(Boolean);
+    let index = settledCount, offset = 0;
+    while (index < words.length && offset < incoming.length && words[index].text === incoming[offset]) { index++; offset++; }
+    if (index < words.length) words.length = index;
+    for (; offset < incoming.length; offset++) words.push({ id: nextId++, text: incoming[offset] });
+    // After reconciling, never before.
+    if (frame.final) settledCount = words.length;
+    render();
+  }
+
+  function render() {
+    // Reuse spans keyed on id, so a survivor keeps its element and doesn't re-fade.
+    const have = new Map([...box.children].map(n => [n.dataset.id, n]));
+    box.textContent = "";
+    words.forEach((w, i) => {
+      let n = have.get(String(w.id));
+      if (!n) { n = document.createElement("span"); n.className = "w"; n.dataset.id = w.id; n.textContent = w.text; }
+      n.classList.toggle("settled", i < settledCount);
+      n.classList.toggle("volatile", i >= settledCount);
+      box.appendChild(n);
+    });
+  }
+
+  let timer = null, step = 0;
+  function reset() { clearInterval(timer); words = []; settledCount = 0; step = 0; box.textContent = ""; state.textContent = "listening"; }
+  function play() {
+    reset();
+    if (document.body.classList.contains("flat")) { frames.forEach(ingest); state.textContent = "stopped"; return; }
+    timer = setInterval(() => {
+      if (step >= frames.length) {
+        clearInterval(timer);
+        state.textContent = "stopped";
+        setTimeout(() => { if (document.querySelector(".slide.on")?.dataset.title === "Voice") play(); }, 2600);
+        return;
+      }
+      ingest(frames[step++]);
+    }, 620);
+  }
+  return { play, reset };
+})();
+
+/* ═══════════════ Per-slide entrances ═══════════════ */
+function onEnter(i) {
+  const title = slides[i].dataset.title;
+  if (title === "Voice") transcript.play(); else transcript.reset();
+  if (title === "The save") {
+    if (document.body.classList.contains("flat")) { scatter.set(true); return; }
+    scatter.set(false);
+    setTimeout(() => scatter.set(true), 1600);
+  }
+}
+
+/* Deep links: `#5` opens on slide 5, and the hash tracks as you move. */
+function hashIndex() {
+  const n = parseInt(location.hash.replace("#", ""), 10);
+  return Number.isFinite(n) ? Math.max(0, Math.min(slides.length - 1, n - 1)) : 0;
+}
+addEventListener("hashchange", () => go(hashIndex()));
+
+requestAnimationFrame(() => {
+  const start = hashIndex();
+  slides[start].classList.add("on");
+  dots[start].classList.add("on");
+  progress.style.width = ((start + 1) / slides.length * 100) + "%";
+  slideNo.textContent = String(start + 1).padStart(2, "0");
+  if (start > 0) {
+    // Jump, don't glide — and re-assert, because the first pass runs before
+    // the webfonts and the screenshots have landed.
+    const jump = () => {
+      const prior = deck.style.scrollBehavior;
+      deck.style.scrollBehavior = "auto";
+      deck.scrollTop = slides[start].offsetTop;
+      deck.style.scrollBehavior = prior;
+    };
+    jump();
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(jump);
+    addEventListener("load", jump);
+    setTimeout(jump, 400);
+    hint.style.opacity = "0";
+  }
+  onEnter(start);
+});
+</script>
+</body>
+</html>

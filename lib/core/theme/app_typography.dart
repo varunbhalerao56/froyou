@@ -165,18 +165,12 @@ class AppTypography {
 
   /// The line under the picture — "How are you feeling?", or the follow-up.
   ///
-  /// Deliberately within two points of [quote]. The caption and the question
-  /// are the only two pieces of text on Home, and stepping the second one down
-  /// to a label size made it read as an annotation on the picture rather than
-  /// as the thing being asked. Weight and colour carry the hierarchy instead —
-  /// which is a quieter way to say it than size.
-  static const TextStyle prompt = TextStyle(
-    fontFamily: fontFamily,
-    fontSize: 23,
-    fontWeight: FontWeight.w500,
-    letterSpacing: -0.35,
-    height: 1.28,
-  );
+  /// Identical to [quote]. The caption and the question are the only two
+  /// pieces of text on Home; stepping the second one down even two points read
+  /// as an annotation on the picture rather than as the thing being asked, so
+  /// colour alone carries the hierarchy — which is a quieter way to say it
+  /// than size or weight.
+  static const TextStyle prompt = quote;
 
   /// Builds the Material [TextTheme] from this scale. Wired into [ThemeData]
   /// in `app_theme.dart`.

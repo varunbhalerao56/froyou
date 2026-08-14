@@ -85,8 +85,8 @@ tool/                       render_icon.sh, render_splash.sh,
 ios/Runner/                 SpeechChannel, NlpChannel, GenAiChannel (+ support)
 ```
 
-**The app icon is generated, not drawn.** `assets/brand/froyou.png` — the
-wordmark on its pink gradient, 2000px — is the source; `./tool/render_icon.sh`
+**The app icon is generated, not drawn.** `assets/brand/froyou.png` — the white
+wordmark on its dark plum gradient, 2000px — is the source; `./tool/render_icon.sh`
 resamples it and overwrites all fifteen PNGs in `AppIcon.appiconset`. Don't edit
 those by hand, the next run will silently undo it. Every size comes straight
 from the 2000 rather than chaining through the 1024: resampling once from the
@@ -105,16 +105,22 @@ cheap way to check the catalog still builds without waiting on a full
 `./tool/render_splash.sh` is the only supported way to regenerate it — see the
 note under "Things that will bite you" about running `flutter_native_splash:create`
 on its own. The mark is **set from `fonts/SF-Pro-Rounded-Bold.otf` at render
-time**, not cut out of the icon art: the artwork is pink-on-pink with no clean
-edge to key against, so extraction would drag a halo with it. Bold is the right
-face because the artwork's ink box measures aspect 3.246 and Bold sets 3.234,
-where no other weight clears 3.14.
+time**, not cut out of the icon art, which has a soft glow and no clean edge to
+key against. Bold is the right face because the artwork's ink box measures
+aspect 3.255 and Bold sets 3.234, where no other weight clears 3.14.
 
 The background is the Paper preset's surface at both brightnesses, **not the
-icon's pink** — those are the exact pixels the first Flutter frame paints, so
-the handover has nothing to give it away, and a pink launch screen would snap
+icon's plum** — those are the exact pixels the first Flutter frame paints, so
+the handover has nothing to give it away, and a plum launch screen would snap
 to cream on every cold start. `main.dart` defers that first frame until
 `runApp`, in a `finally` so a failed boot still gets its error screen.
+
+**There are two launch marks, and there have to be.** The icon's wordmark is
+white, which is what dark mode gets; on the cream light surface white is a
+1.05:1 non-event, so light mode is set in `#623B5E`, the plum from the
+artwork's own top edge, at 7.9:1. No single ink reads on both cream and
+near-black. Both land in `LaunchImage.imageset` as a luminosity appearance
+pair, so `flutter_native_splash` needs `image` *and* `image_dark`.
 
 **State:** `flutter_hooks` + `ChangeNotifier` behind `AppScope`.
 

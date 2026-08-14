@@ -53,6 +53,40 @@ class _BackdropManagerState extends State<BackdropManager> {
     }
   }
 
+  /// Removing an image is one tap away from a caption field, and the picker
+  /// is the only way back — so it asks first, naming the image by its caption
+  /// when it has one.
+  Future<void> _confirmRemove(int index, String? caption) async {
+    final colors = context.appColors;
+    final label = (caption == null || caption.trim().isEmpty)
+        ? 'This image'
+        : '"${caption.trim()}"';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove this image?'),
+        content: Text(
+          '$label will no longer show on Home. You can add it again from your '
+          'photos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Keep it'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text('Remove', style: TextStyle(color: colors.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    await widget.profile.removeBackdrop(index);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -188,7 +222,7 @@ class _BackdropManagerState extends State<BackdropManager> {
                     ),
                     IconButton(
                       tooltip: 'Remove',
-                      onPressed: () => widget.profile.removeBackdrop(index),
+                      onPressed: () => _confirmRemove(index, backdrop.caption),
                       icon: Icon(
                         CupertinoIcons.minus_circle,
                         size: 20,

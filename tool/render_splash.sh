@@ -28,8 +28,19 @@ FONT="fonts/SF-Pro-Rounded-Bold.otf"
 STAGE="build/splash"
 OUT="ios/Runner/Assets.xcassets/LaunchImage.imageset"
 
-# The wordmark's colour, sampled from the densest glyph pixels in froyou.png.
-INK="#F3A8FF"
+# Two inks, because the wordmark is white and the launch surface is not.
+#
+# The icon sets `froyou` in white on a dark plum field. White is the mark's real
+# colour and it is what dark mode gets. But the app boots into the Paper
+# preset's *cream* surface in light mode, where white is a 1.05:1 non-event, so
+# light mode takes the plum from the artwork's own top edge instead — 7.9:1 on
+# cream, and a colour that is literally in the logo rather than invented for it.
+#
+# This is why there are two masters where there used to be one. The previous
+# pink wordmark cleared both surfaces on its own; a white one cannot, and no
+# single colour reads on both cream and near-black.
+LIGHT_INK="#623B5E"
+DARK_INK="#FFFFFF"
 
 # The launch mark at @1x, in points, and how much of that square the word fills.
 # 300 x 0.72 puts the word at ~216pt — a little over half the width of the
@@ -45,23 +56,33 @@ mkdir -p "$STAGE"
 MASTER_PX=$((BASE * 4))
 WORD_PX=$(printf "%.0f" "$(echo "$MASTER_PX * $FILL" | bc -l)")
 
+# $1 = ink, $2 = output path
+set_wordmark() {
+  magick -background none -fill "$1" -font "$FONT" -pointsize 800 label:froyou \
+    -trim +repage \
+    -filter Lanczos -resize "${WORD_PX}x" \
+    -background none -gravity center -extent "${MASTER_PX}x${MASTER_PX}" \
+    -strip "$2"
+}
+
 echo "setting wordmark → ${WORD_PX}px wide on a ${MASTER_PX}px canvas"
-magick -background none -fill "$INK" -font "$FONT" -pointsize 800 label:froyou \
-  -trim +repage \
-  -filter Lanczos -resize "${WORD_PX}x" \
-  -background none -gravity center -extent "${MASTER_PX}x${MASTER_PX}" \
-  -strip "$STAGE/splash-master.png"
+set_wordmark "$LIGHT_INK" "$STAGE/splash-master.png"
+set_wordmark "$DARK_INK" "$STAGE/splash-master-dark.png"
 
 echo "generating launch screen"
 dart run flutter_native_splash:create
 
-# Overwrite what the package just resampled.
-echo "resampling @3x/@2x/@1x"
-for spec in "LaunchImage@3x:3" "LaunchImage@2x:2" "LaunchImage:1"; do
-  name="${spec%%:*}"
-  px=$((BASE * ${spec##*:}))
-  magick "$STAGE/splash-master.png" -filter Lanczos -resize "${px}x${px}" \
-    -strip "$OUT/$name.png"
+# Overwrite what the package just resampled. Both variants live in the one
+# imageset, distinguished by a luminosity appearance in its Contents.json.
+echo "resampling @3x/@2x/@1x, light and dark"
+for variant in "LaunchImage:splash-master" "LaunchImageDark:splash-master-dark"; do
+  prefix="${variant%%:*}"
+  master="$STAGE/${variant##*:}.png"
+  for scale in 3 2 1; do
+    suffix=$([ "$scale" = 1 ] && echo "" || echo "@${scale}x")
+    magick "$master" -filter Lanczos -resize "$((BASE * scale))x$((BASE * scale))" \
+      -strip "$OUT/${prefix}${suffix}.png"
+  done
 done
 
 echo "wrote $(ls "$OUT"/LaunchImage*.png | wc -l | tr -d ' ') PNGs to $OUT"

@@ -69,7 +69,7 @@ class ThemePresets {
     id: 'paper',
     name: 'Paper',
     lightAccent: Color(0xFF54637A),
-    darkAccent: Color(0xFF9DB4D4),
+        darkAccent: Color(0xFF9DB4D4),
     lightSurface: Color(0xFFF2EFE9),
     darkSurface: Color(0xFF16181D),
   );
@@ -128,20 +128,20 @@ class ThemePresets {
     darkSurface: Color(0xFF181A13),
   );
 
-  /// The app's own colours, taken from the icon.
+  /// Orchid — a light magenta-pink at ~295°, far enough from [dusk]'s 250° to
+  /// be its own theme rather than a warmer version of that one.
   ///
-  /// [darkAccent] is the wordmark's ink exactly — `#F3A8FF`, sampled from the
-  /// densest glyph pixels in `assets/brand/froyou.png`. It survives dark mode
-  /// unchanged because it is already light enough to clear 4.5:1 on a near-black
-  /// surface, so nothing has to correct it and it keeps all of its saturation.
+  /// **No longer the brand colours.** It was drawn from the pink wordmark that
+  /// preceded the current plum icon (kept as `assets/brand/froyou-pink.png`),
+  /// and it has simply outlived that artwork. It stands on its own as a preset;
+  /// nothing here claims to match `froyou.png` any more.
   ///
-  /// [lightAccent] cannot be that colour. At 83% lightness the wordmark pink is
+  /// [darkAccent] survives dark mode uncorrected because at 83% lightness it
+  /// already clears 4.5:1 on a near-black surface, so it keeps all of its
+  /// saturation. [lightAccent] cannot be the same colour — that lightness is
   /// invisible on paper, and correcting it *down* far enough to read would land
   /// somewhere it was never authored to be. So light mode names its own end of
-  /// the same hue — see the note on per-brightness accents in [ThemePreset].
-  ///
-  /// The hue sits around 295°, which is far enough from [dusk]'s 250° to be a
-  /// different theme rather than a warmer version of that one.
+  /// the hue; see the note on per-brightness accents in [ThemePreset].
   static const ThemePreset orchid = ThemePreset(
     id: 'orchid',
     name: 'Orchid',

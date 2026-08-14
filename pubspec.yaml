@@ -2,7 +2,7 @@ name: froyou
 description: "Froyou"
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-version: 1.0.3+4
+version: 1.0.4+5
 
 environment:
   sdk: ^3.12.2
@@ -94,14 +94,17 @@ objectbox:
 # move in theme_presets.dart, move them here too. Deliberately *not* the icon's
 # pink: a pink launch screen would snap to cream on every cold start.
 #
-# One image serves both brightnesses. The mark is the froyou wordmark in
-# #F3A8FF, set from SF Pro Rounded Bold rather than cut out of the icon art —
-# it separates from both surfaces by hue, and a second asset would be two
-# things to keep in step instead of one.
+# Two images, one per brightness, both set from SF Pro Rounded Bold rather than
+# cut out of the icon art. The icon's wordmark is white, which is what dark mode
+# gets; light mode boots onto cream, where white is a 1.05:1 non-event, so it
+# takes the plum from the artwork's own top edge instead. No single ink reads on
+# both cream and near-black, which is why the previous single-asset arrangement
+# had to go. Both masters are generated — don't point these at checked-in files.
 flutter_native_splash:
   color: "#F2EFE9"
   color_dark: "#16181D"
   image: "build/splash/splash-master.png"
+  image_dark: "build/splash/splash-master-dark.png"
   ios: true
   # Android is out of scope for this app, and there is no web build.
   android: false
